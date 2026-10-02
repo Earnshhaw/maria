@@ -1,36 +1,88 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::{BTreeMap};
+use std::fs::{create_dir_all};
+use std::path::{PathBuf};
+use std::process::{Child, Command};
 
 fn main() {
-    let game = GameCfg { title: String::from("sh2"), 
-        id: 0,
-        binary_path: "/usr/local/games/Konami/Silent Hill 2/sh2pc.exe".to_string(), 
-        working_dir:"/usr/local/games/Konami/Silent Hill 2".to_string(), 
-        runner: Runner::Wine,
-        store: Store::None, 
-        launch_args: Vec::new(),
-        env_vars: BTreeMap::new()
+    let launch = GameCfg { id: 0, 
+        binary_path: PathBuf::from("/usr/local/games/Konami/Silent Hill 2/sh2pc.exe"), 
+        working_dir: PathBuf::from("/usr/local/games/Konami/Silent Hill 2"), 
+        env_vars: BTreeMap::new(), 
+        launch_args: Vec::new(), 
+        runner: Runner::Wine };
+    
+    let entry = GameEntry {
+        title: "sh2".to_string(),
+        launch: Launch::Local(launch.clone()),
     };
-    run_pipeline(&game);
+    match process_run(&entry) {
+        Ok(mut ch) => {println!("{}", ch.wait().unwrap().code().unwrap())},
+        Err(e) => eprintln!("{}", e)
+    }
+    println!("{}", prefix_dir(&launch));
 }
 
-struct GameCfg {
+struct GameEntry {
     title: String,
+    launch: Launch,
+}
+
+impl GameEntry {
+    fn get_id(&self) -> u64 {
+        match &self.launch {
+            Launch::Steam { appid } => {*appid},
+            Launch::Local(gc) => {gc.id}
+        }
+    }
+    fn get_cfg(&self) -> Option<GameCfg> {
+        match &self.launch {
+            Launch::Local(cfg) => {Some(cfg.clone())}
+            Launch::Steam { appid } => {None}
+        }
+    }
+}
+
+enum Launch {
+    Steam {appid: u64},
+    Local(GameCfg),
+}
+
+#[derive(Clone)]
+struct GameCfg {
     id: u64,
-    binary_path: String,
-    working_dir: String,
-    runner: Runner,
-    store: Store,
+    binary_path: PathBuf,
+    working_dir: PathBuf,
+    env_vars: BTreeMap<String, String>,
     launch_args: Vec<String>,
-    env_vars: BTreeMap<String, String>
+    runner: Runner
 }
 
+#[derive(Debug, Clone)]
 enum Runner {
-    ByPath(PathBuf),
-    Fixed(FixedRunner),
+    Native,
     Wine,
-    Native
+    Proton(ProtonVariant, Store),
 }
 
+#[derive(Default, Clone, Debug)]
+enum ProtonVariant {
+    GEProton, //latest ge proton
+    #[default]
+    UMUProton, //umu-proton, latest stable valve proton + umu fixes
+    Custom(PathBuf) //path to a local proton folder, must have proton file inside of it 
+}
+
+impl ProtonVariant {
+    fn get_string(&self) -> String {
+        match self {
+            Self::GEProton => String::from("GE-Proton"),
+            Self::UMUProton => String::from("UMU-Proton"),
+            Self::Custom(p) => String::from(p.to_string_lossy())
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 enum Store {
     Steam,
     EGS,
@@ -53,58 +105,47 @@ impl Store {
     }
 }
 
-#[derive(Default)]
-enum FixedRunner {
-    ProtonGE, //latest ge proton
-    #[default]
-    UMUProton, //umu-proton, latest stable valve proton + umu fixes
-}
-
-impl FixedRunner {
-    fn get_string(&self) -> String {
-        match self {
-            Self::ProtonGE => String::from("GE-Proton"),
-            Self::UMUProton => String::from("UMU-Proton")
+fn command_build(entry: &GameEntry) -> Command {
+    match &entry.launch {
+        Launch::Steam { appid } => {
+            let mut cmd = Command::new("steam");
+            cmd.args(["-applaunch", &appid.to_string()]);
+            cmd
         }
+        Launch::Local(cfg) => {
+            match &cfg.runner {
+                Runner::Native => {
+                    let mut cmd = Command::new(&cfg.binary_path);
+                    cmd.args(&cfg.launch_args).envs(&cfg.env_vars).current_dir(&cfg.working_dir);
+                    cmd
+                },
+                Runner::Wine => {
+                    let mut cmd = Command::new("wine");
+                    cmd.current_dir(&cfg.working_dir).env("WINEPREFIX", prefix_dir(&cfg)).args(["start", "/unix"]).arg(&cfg.binary_path).envs(&cfg.env_vars).args(&cfg.launch_args);
+                    cmd
+                },
+                Runner::Proton(variant, store) => {
+                    let mut cmd = Command::new("umu-run");
+                    cmd
+                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(&cfg)), ("STORE", store.get_string())])
+                        .arg(&cfg.binary_path)
+                        .envs(&cfg.env_vars)
+                        .args(&cfg.launch_args);
+                    cmd
+                }   
+            }
+        },
     }
 }
 
-fn run_pipeline(entry: &GameCfg) {
-    let data_dir = dirs::data_dir().unwrap();
-    let prefix_dir = data_dir.join(format!("maria/{}/prefix/", entry.title));
-    
-    let protonpath = match &entry.runner {
-        Runner::ByPath(path) => {
-            path.to_string_lossy().into_owned()
-        },
-        Runner::Fixed(fixed) => {
-            fixed.get_string()
-        }
-        Runner::Wine => {
-            wine_run(entry, prefix_dir); 
-            return;
-        },
-        Runner::Native => {
-            native_run(entry);
-            return;
-        }
-    };
-
-    let mut cmd = std::process::Command::new("umu-run");
-    
-    cmd
-    .envs([("PROTONPATH", protonpath), ("WINEPREFIX", prefix_dir.to_string_lossy().into_owned()), ("STORE", entry.store.get_string())])
-    .arg(&entry.binary_path)
-    .current_dir(&entry.working_dir)
-    .args(&entry.launch_args)
-    .spawn().unwrap();
+fn process_run(entry: &GameEntry) -> Result<Child, std::io::Error> {
+    if !matches!(entry.launch, Launch::Steam {appid}) {
+        create_dir_all(prefix_dir(&entry.get_cfg().unwrap())).expect("Failed to create prefix folder");
+    }
+    command_build(entry).spawn()
 }
 
-fn native_run(entry: &GameCfg) {
-    std::process::Command::new(format!("./{}", entry.binary_path)).envs(&entry.env_vars);
-}
-
-fn wine_run(entry: &GameCfg, wine_prefix: PathBuf) {
-    let mut cmd = std::process::Command::new("wine");
-    cmd.env("WINEPREFIX", wine_prefix).args(["start", "/unix"]).arg(&entry.binary_path).envs(&entry.env_vars).args(&entry.launch_args).current_dir(&entry.working_dir).spawn().unwrap();
+fn prefix_dir(entry: &GameCfg) -> String {
+    let data_dir = dirs::data_dir().expect("No data dir ?");
+    data_dir.join(format!("maria/{}/prefix", entry.id)).to_string_lossy().into_owned()
 }
