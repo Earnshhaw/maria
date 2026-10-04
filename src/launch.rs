@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-use std::{fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
+use std::{collections::HashMap, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 
 fn steam_dir() -> Option<PathBuf> {
     let home_dir = dirs::data_local_dir();
@@ -60,7 +60,24 @@ pub fn init_runners() -> Vec<RunnerEntry> {
             runners.extend(bottles_proton)
         }
     }
-    runners.into_iter().map(|raw_path| RunnerEntry::new(raw_path.file_name().unwrap().to_string_lossy(), &raw_path)).collect()
+    let accumulated_runners = process_paths(runners);
+    dedup_runners(accumulated_runners)
+}
+
+fn process_paths(paths: Vec<PathBuf>) -> Vec<RunnerEntry> {
+    paths.into_iter().map(|raw_path| RunnerEntry::new(raw_path.file_name().unwrap().to_string_lossy(), &raw_path)).collect()
+}
+
+fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
+    let mut deduped_runners: Vec<RunnerEntry> = Vec::new();
+    let mut count: HashMap<String, u8> = HashMap::new();
+    for runner in runners {
+        let dup_count = count.entry(runner.name().to_owned()).and_modify(|x| *x+=1).or_insert(1);
+        if *dup_count == 1 {
+            deduped_runners.push(runner);
+        }
+    }
+    return deduped_runners; 
 }
 
 #[derive(Debug, PartialEq, PartialOrd)]
