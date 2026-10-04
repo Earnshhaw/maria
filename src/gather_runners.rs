@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
+use std::{collections::HashSet, fs::{DirEntry, read_dir}, hash::Hash, path::{Path, PathBuf}};
 
 fn steam_dir() -> Option<PathBuf> {
     let home_dir = dirs::data_local_dir();
@@ -69,18 +69,18 @@ fn process_paths(paths: Vec<PathBuf>) -> Vec<RunnerEntry> {
 }
 
 fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
-    let mut deduped_runners: Vec<RunnerEntry> = Vec::new();
-    let mut count: HashMap<String, u8> = HashMap::new();
+    let mut unique_runners: Vec<RunnerEntry> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    
     for runner in runners {
-        let dup_count = count.entry(runner.name().to_owned()).and_modify(|x| *x+=1).or_insert(1);
-        if *dup_count == 1 {
-            deduped_runners.push(runner);
+        if seen.insert(runner.name().to_owned()) {
+            unique_runners.push(runner);
         }
     }
-    return deduped_runners; 
+    unique_runners 
 }
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct RunnerEntry {
     name: String,
     path: PathBuf,
