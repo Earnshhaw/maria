@@ -1,18 +1,19 @@
-use std::{collections::HashSet, fs::{DirEntry, read_dir}, hash::Hash, path::{Path, PathBuf}};
+#![allow(unused)]
+use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 
-fn steam_dir() -> Option<PathBuf> {
-    let home_dir = dirs::data_local_dir();
-    home_dir.map(|dir| dir.join("Steam"))
+#[cfg(target_os = "linux")]
+pub fn steam_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|dir| dir.join("Steam"))
 }
 
+#[cfg(target_os = "linux")]
 fn heroic_dir() -> Option<PathBuf> {
-    let cfg_dir = dirs::config_local_dir();
-    cfg_dir.map(|dir| dir.join("heroic/tools/proton"))
+    dirs::config_local_dir().map(|dir| dir.join("heroic/tools/proton"))
 }
 
+#[cfg(target_os = "linux")]
 fn bottles_dir() -> Option<PathBuf> {
-    let data_dir = dirs::data_local_dir();
-    data_dir.map(|dir| dir.join("bottles/runners"))
+    dirs::data_local_dir().map(|dir| dir.join("bottles/runners"))
 }
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {

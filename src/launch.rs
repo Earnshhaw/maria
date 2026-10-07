@@ -5,6 +5,9 @@ use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameEntry {
     pub title: String,
     pub launch: Launch,
@@ -17,22 +20,23 @@ impl GameEntry {
             Launch::Local(gc) => {gc.id}
         }
     }
-    pub fn get_cfg(&self) -> Option<GameCfg> {
+    pub fn get_cfg(&self) -> Option<&GameCfg> {
         match &self.launch {
-            Launch::Local(cfg) => {Some(cfg.clone())}
+            Launch::Local(cfg) => {Some(cfg)}
             Launch::Steam { appid } => {None}
         }
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Launch {
     Steam {appid: u64},
     Local(GameCfg),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct GameCfg {
-    pub id: u64,
+    id: u64,
     binary_path: PathBuf,
     working_dir: PathBuf,
     env_vars: BTreeMap<String, String>,
@@ -69,14 +73,14 @@ impl GameCfg {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Runner {
     Native,
     Wine,
     Proton(ProtonVariant, Store),
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub enum ProtonVariant {
     GEProton, //latest ge proton
     #[default]
@@ -94,7 +98,7 @@ impl ProtonVariant {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Store {
     Steam,
     EGS,
@@ -163,7 +167,7 @@ fn command_build(entry: &GameEntry) -> Command {
 pub fn process_run(entry: &GameEntry) -> Result<Child, std::io::Error> {
     if let Some(cfg) = entry.get_cfg() {
         if !matches!(cfg.runner, Runner::Native) {
-            create_dir_all(prefix_dir(&entry.get_cfg().unwrap())).expect("Failed to create prefix folder");
+            create_dir_all(prefix_dir(cfg)).expect("Failed to create prefix folder");
         }
     }
     command_build(entry).spawn()
