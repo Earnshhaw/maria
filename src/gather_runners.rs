@@ -6,6 +6,11 @@ pub fn steam_dir() -> Option<PathBuf> {
     dirs::data_local_dir().map(|dir| dir.join("Steam"))
 }
 
+#[cfg(target_os = "windows")]
+pub fn steam_dir() -> Option<PathBuf> {
+    todo!()
+}
+
 #[cfg(target_os = "linux")]
 fn heroic_dir() -> Option<PathBuf> {
     dirs::config_local_dir().map(|dir| dir.join("heroic/tools/proton"))

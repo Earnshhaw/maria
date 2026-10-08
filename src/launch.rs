@@ -1,88 +1,99 @@
-use crate::id::ensure_unique_id;
+#![allow(unused)]
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct GameEntry {
-    pub title: String,
-    pub launch: Launch,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum GameEntry {
+    Steam(SteamEntry),
+    Local(LocalEntry)
 }
-
-impl GameEntry {
-    pub fn get_cfg(&self) -> Option<&GameCfg> {
-        match &self.launch {
-            Launch::Local(cfg) => {Some(cfg)}
-            Launch::Steam { appid } => {None}
-        }
-    }
-    pub fn run_game(&self) -> Result<Child, std::io::Error> {
-        if let Some(cfg) = self.get_cfg() {
-            if !matches!(cfg.runner, Runner::Native) {
-                create_dir_all(prefix_dir(cfg)).expect("Failed to create prefix folder");
-            }
-        }
-        command_build(self).spawn()
-    }
-}
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum Launch {
-    Steam {appid: u64},
-    Local(GameCfg),
+pub struct SteamEntry {
+    pub appid: u64,
+    pub title: String
 }
 
-impl Default for Launch {
-    fn default() -> Self {
-        Launch::Local(GameCfg::default())
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize, Debug, Default)]
-pub struct GameCfg {
-    id: Uuid,
-    binary_path: PathBuf,
-    working_dir: PathBuf,
-    env_vars: BTreeMap<String, String>,
-    launch_args: Vec<String>,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LocalEntry {
+    title: String, 
+    id: Uuid, 
+    binary_path: PathBuf, 
+    working_dir: PathBuf, 
+    env_vars: BTreeMap<String, String>, 
+    launch_args: Vec<String>, 
     runner: Runner
 }
 
-impl GameCfg {
-    pub fn new(binary_path: impl Into<PathBuf>, working_dir: impl Into<PathBuf>, envs_vars: BTreeMap<String, String>, launch_args: &[&str], runner: Runner) -> GameCfg {
-        GameCfg {
-            id: ensure_unique_id(),
-            binary_path: binary_path.into(),
-            working_dir: working_dir.into(),
-            env_vars: envs_vars,
-            launch_args: launch_args.to_vec().into_iter().map(|e| e.to_string()).collect(), 
-            runner: runner
+impl LocalEntry {
+    pub fn new(
+        title: impl Into<String>, 
+        id: impl Into<Uuid>, 
+        binary_path: impl Into<PathBuf>, 
+        working_dir: impl Into<PathBuf>, 
+        env_vars: BTreeMap<String, String>, 
+        launch_args: &[&str], 
+        runner: Runner) -> LocalEntry 
+    {
+        LocalEntry { 
+            title: title.into(), 
+            id: id.into(), 
+            binary_path: binary_path.into(), 
+            working_dir: working_dir.into(), 
+            env_vars: env_vars, 
+            launch_args: launch_args.into_iter().map(|e| e.to_string()).collect(), 
+            runner: runner }
+    }
+}
+
+impl LocalEntry {
+    pub fn get_title(&self) -> &str {
+        &self.title
+    }
+    pub fn get_id(&self) -> &Uuid {
+        &self.id
+    }
+    pub fn get_binary_path(&self) -> &Path {
+        &self.binary_path
+    }
+    pub fn get_working_dir(&self) -> &Path {
+        &self.working_dir
+    }
+    pub fn get_env_vars(&self) -> &BTreeMap<String, String> {
+        &self.env_vars
+    }
+    pub fn get_launch_args(&self) -> &Vec<String> {
+        &self.launch_args
+    }
+    pub fn get_runner(&self) -> &Runner {
+        &self.runner
+    }
+}
+
+impl GameEntry {
+    fn make_prefix(&self) {
+        match &self {
+            GameEntry::Local(game) => {
+                match game.runner {
+                    Runner::Native => {return},
+                    _ => {
+                        create_dir_all(prefix_dir(&game.id)).unwrap();
+                    }
+                }
+            },
+            GameEntry::Steam(_) => {return}
         }
     }
     
-    pub fn binary_path(&self) -> &Path {
-        &self.binary_path
+    pub fn run_game(&self) -> Result<Child, std::io::Error> {
+        self.make_prefix();
+        command_build(self).spawn()
     }
-    pub fn working_dir(&self) -> &Path {
-        &self.working_dir
-    }
-    pub fn env_vars(&self) -> &BTreeMap<String, String> {
-        &self.env_vars
-    }
-    pub fn launch_args(&self) -> &Vec<String> {
-        &self.launch_args
-    }
-    pub fn runner(&self) -> &Runner {
-        &self.runner
-    }
-    pub fn uuid(&self) -> &Uuid {
-        &self.id
-    }
+
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -136,41 +147,41 @@ impl Store {
 }
 
 fn command_build(entry: &GameEntry) -> Command {
-    match &entry.launch {
-        Launch::Steam { appid } => {
+    match &entry {
+        GameEntry::Steam(steam) => {
             let mut cmd = Command::new("steam");
-            cmd.args(["-applaunch", &appid.to_string()]);
+            cmd.args(["-appEntryType", &steam.appid.to_string()]);
             cmd
         }
-        Launch::Local(cfg) => {
-            match &cfg.runner {
+        GameEntry::Local(game) => {
+            match game.get_runner() {
                 Runner::Native => {
-                    let mut cmd = Command::new(cfg.binary_path());
+                    let mut cmd = Command::new(game.get_binary_path());
                     cmd
-                        .args(cfg.launch_args())
-                        .envs(cfg.env_vars())
-                        .current_dir(cfg.working_dir());
+                        .args(game.get_launch_args())
+                        .envs(game.get_env_vars())
+                        .current_dir(game.get_working_dir());
                     cmd
                 },
                 Runner::Wine => {
                     let mut cmd = Command::new("wine");
                     cmd
-                        .current_dir(cfg.working_dir())
-                        .env("WINEPREFIX", prefix_dir(&cfg))
+                        .current_dir(game.get_working_dir())
+                        .env("WINEPREFIX", prefix_dir(game.get_id()))
                         .args(["start", "/unix"])
-                        .arg(cfg.binary_path())
-                        .envs(cfg.env_vars())
-                        .args(cfg.launch_args());
+                        .arg(game.get_binary_path())
+                        .envs(game.get_env_vars())
+                        .args(game.get_launch_args());
                     cmd
                 },
                 Runner::Proton(variant, store) => {
                     let mut cmd = Command::new("umu-run");
                     cmd
-                        .current_dir(cfg.working_dir()) //questionable ?
-                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(&cfg)), ("STORE", store.get_string())])
-                        .arg(cfg.binary_path())
-                        .envs(cfg.env_vars())
-                        .args(cfg.launch_args());
+                        .current_dir(game.get_working_dir()) //questionable ?
+                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id())), ("STORE", store.get_string())])
+                        .arg(game.get_binary_path())
+                        .envs(game.get_env_vars())
+                        .args(game.get_launch_args());
                     cmd
                 }   
             }
@@ -178,9 +189,9 @@ fn command_build(entry: &GameEntry) -> Command {
     }
 }
 
-pub fn prefix_dir(entry: &GameCfg) -> String {
+pub fn prefix_dir(id: &Uuid) -> String {
     let data_dir = app_data_dir().expect("");
-    data_dir.join(entry.uuid().to_string()).join("prefix").to_string_lossy().into_owned()
+    data_dir.join(id.to_string()).join("prefix").to_string_lossy().into_owned()
 }
 
 pub fn app_data_dir() -> Option<PathBuf> {
