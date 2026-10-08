@@ -1,32 +1,35 @@
-#![allow(unused)]
-
+use crate::id::ensure_unique_id;
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct GameEntry {
     pub title: String,
     pub launch: Launch,
 }
 
 impl GameEntry {
-    pub fn get_id(&self) -> u64 {
-        match &self.launch {
-            Launch::Steam { appid } => {*appid},
-            Launch::Local(gc) => {gc.id}
-        }
-    }
     pub fn get_cfg(&self) -> Option<&GameCfg> {
         match &self.launch {
             Launch::Local(cfg) => {Some(cfg)}
             Launch::Steam { appid } => {None}
         }
     }
+    pub fn run_game(&self) -> Result<Child, std::io::Error> {
+        if let Some(cfg) = self.get_cfg() {
+            if !matches!(cfg.runner, Runner::Native) {
+                create_dir_all(prefix_dir(cfg)).expect("Failed to create prefix folder");
+            }
+        }
+        command_build(self).spawn()
+    }
 }
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Launch {
@@ -34,9 +37,15 @@ pub enum Launch {
     Local(GameCfg),
 }
 
-#[derive(Clone, Deserialize, Serialize, Debug)]
+impl Default for Launch {
+    fn default() -> Self {
+        Launch::Local(GameCfg::default())
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct GameCfg {
-    id: u64,
+    id: Uuid,
     binary_path: PathBuf,
     working_dir: PathBuf,
     env_vars: BTreeMap<String, String>,
@@ -45,9 +54,9 @@ pub struct GameCfg {
 }
 
 impl GameCfg {
-    pub fn new(id: u64, binary_path: impl Into<PathBuf>, working_dir: impl Into<PathBuf>, envs_vars: BTreeMap<String, String>, launch_args: &[&str], runner: Runner) -> GameCfg {
+    pub fn new(binary_path: impl Into<PathBuf>, working_dir: impl Into<PathBuf>, envs_vars: BTreeMap<String, String>, launch_args: &[&str], runner: Runner) -> GameCfg {
         GameCfg {
-            id: id,
+            id: ensure_unique_id(),
             binary_path: binary_path.into(),
             working_dir: working_dir.into(),
             env_vars: envs_vars,
@@ -71,11 +80,15 @@ impl GameCfg {
     pub fn runner(&self) -> &Runner {
         &self.runner
     }
+    pub fn uuid(&self) -> &Uuid {
+        &self.id
+    }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub enum Runner {
     Native,
+    #[default]
     Wine,
     Proton(ProtonVariant, Store),
 }
@@ -98,10 +111,11 @@ impl ProtonVariant {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub enum Store {
     Steam,
     EGS,
+    #[default]
     None,
 }
 
@@ -164,16 +178,11 @@ fn command_build(entry: &GameEntry) -> Command {
     }
 }
 
-pub fn process_run(entry: &GameEntry) -> Result<Child, std::io::Error> {
-    if let Some(cfg) = entry.get_cfg() {
-        if !matches!(cfg.runner, Runner::Native) {
-            create_dir_all(prefix_dir(cfg)).expect("Failed to create prefix folder");
-        }
-    }
-    command_build(entry).spawn()
+pub fn prefix_dir(entry: &GameCfg) -> String {
+    let data_dir = app_data_dir().expect("");
+    data_dir.join(entry.uuid().to_string()).join("prefix").to_string_lossy().into_owned()
 }
 
-pub fn prefix_dir(entry: &GameCfg) -> String {
-    let data_dir = dirs::data_dir().expect("No data dir ?");
-    data_dir.join(format!("maria/{}/prefix", entry.id)).to_string_lossy().into_owned()
+pub fn app_data_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|e| e.join("maria"))
 }

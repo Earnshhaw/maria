@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+acf-parser = "0.1.0"
+copy = "0.2.9"
 dirs = "7.0.0"
 serde = { version = "1.0.229", features = ["derive"] }
-toml = "1.1.6"
+toml = {version = "1.1.6", features = ["serde"]}
+uuid = { version = "1.27.0", features = ["v4", "serde"] }

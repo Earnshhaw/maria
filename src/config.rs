@@ -1,7 +1,7 @@
 use std::{error::Error, fs::{File, create_dir_all, read_to_string, write}, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
-fn app_config_dir() -> PathBuf {
+pub fn app_config_dir() -> PathBuf {
     dirs::config_dir().unwrap().join("maria")
 }
 
