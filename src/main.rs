@@ -3,6 +3,7 @@ mod boot;
 mod config;
 mod gather_games;
 mod gui;
+mod style;
 mod api_keys;
 mod id;
 mod dirs;

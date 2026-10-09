@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use iced::{widget::image::Handle};
 use crate::{dirs::app_data_dir, gather_games::load_saved_games, gather_runners::fetch_runners, gui::State, launch::{GameEntry, ProtonVariant, Runner}};
 
-const PLACEHOLDER_GRID: &str = "blank.png";
+pub const PLACEHOLDER_GRID: &str = "blank.png";
 
 pub fn boot() -> State {
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
@@ -33,6 +35,7 @@ pub fn boot() -> State {
     
     State {
         game_entries: game_entries,
-        runners: runners
+        runners: runners,
+        running_game: None
     }
 }

@@ -1,25 +1,33 @@
-use iced::{Element, Length, Task, widget::{button, column, container, image::{self, Handle}, row, scrollable, text}};
+use std::sync::Arc;
 
-use crate::{gather_games::{CError, fetch_steam_games}, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
+use iced::{Element, Length, Task, widget::{button, column, container, image::{self, Handle}, mouse_area, row, scrollable, text}};
+use tokio::{spawn, task::JoinSet};
+
+use crate::{boot::PLACEHOLDER_GRID, dirs::app_data_dir, gather_games::{CError, fetch_steam_games, load_saved_games, save_to_disk}, launch::{GameEntry, LocalEntry, Runner, SteamEntry}, style::container_style};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
     pub game_entries: Vec<(GameEntry, Handle)>,
     pub runners: Vec<Runner>,
+    pub running_game: Option<GameEntry>
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     FetchSteamGames,
-    SteamGamesFetched(Result<Vec<SteamEntry>, CError>)
+    SteamGamesFetched(Result<Vec<SteamEntry>, CError>),
+    SyncGamesToDisk,
+    Synced(Result<(), CError>),
+    RunGame(String)
 }
 
 fn panel_el<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
     container(
+        mouse_area(
     column![
         image::Image::new(handle).height(200),
-        text(entry.get_name()),
-    ]).into()
+    ]).on_double_click(Message::RunGame(entry.id_as_string()))).style(container_style)
+    .into()
 }
 
 impl State {
@@ -35,19 +43,63 @@ impl State {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::FetchSteamGames => fetch_steam_games_cmd(self),
-            Message::SteamGamesFetched(result) => steam_games_fetches(self, result)
+            Message::SteamGamesFetched(result) => steam_games_fetched(self, result),
+            Message::SyncGamesToDisk => sync_games(self),
+            Message::Synced(status) => synced(self, status),
+            Message::RunGame(strid) => run_game(self, strid)
         }
     }
 }
 
+fn run_game(state: &mut State, strid: String) -> Task<Message> {
+    todo!()
+}
+fn synced(state: &mut State, status: Result<(), CError>) -> Task<Message> {
+    match status {
+        Ok(_) => {},
+        Err(e) => eprintln!("{}", e)
+    };
+    let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
+    for entry in load_saved_games().unwrap() {
+        match entry {
+            GameEntry::Local(game) => {
+                if !game.get_grid().try_exists().unwrap() {
+                    let handle = Handle::from_path(app_data_dir().unwrap().join(format!("grids/{}", PLACEHOLDER_GRID)));
+                    game_entries.push((GameEntry::Local(game), handle));
+                } else {
+                    let handle = Handle::from_path(game.get_grid());
+                    game_entries.push((GameEntry::Local(game), handle));
+                }
+            },
+            GameEntry::Steam(game) => {
+                if !game.get_grid().try_exists().unwrap() {
+                    let handle = Handle::from_path(app_data_dir().unwrap().join(format!("grids/{}", PLACEHOLDER_GRID)));
+                    game_entries.push((GameEntry::Steam(game), handle));
+                } else {
+                    let handle = Handle::from_path(game.get_grid());
+                    game_entries.push((GameEntry::Steam(game), handle));
+                }
+            }
+        }
+    }
+    state.game_entries = game_entries;
+    Task::none()
+}
+fn sync_games(state: &mut State) -> Task<Message> {
+    let c = state.game_entries.iter().map(|(entry, _)| entry.clone()).collect();
+    Task::perform(async move {
+        save_to_disk(c).await
+    }, Message::Synced)
+}
 fn fetch_steam_games_cmd(state: &mut State) -> Task<Message> {
     Task::perform(async move {
         fetch_steam_games().await
     }, Message::SteamGamesFetched)
 }
-fn steam_games_fetches(state: &mut State, result: Result<Vec<SteamEntry>, CError>) -> Task<Message> {
+fn steam_games_fetched(state: &mut State, result: Result<Vec<SteamEntry>, CError>) -> Task<Message> {
         match result {
             Ok(entries) => {
+                let mut new_entries = Vec::new();
                 for entry in entries {
                     if state.game_entries.iter().any(|(e, _)| {
                         match &e {
@@ -58,12 +110,16 @@ fn steam_games_fetches(state: &mut State, result: Result<Vec<SteamEntry>, CError
                         continue;
                     }
                     let handle = Handle::from_path(entry.get_grid());
-                    state.game_entries.push((GameEntry::Steam(entry), handle));
+                    new_entries.push((GameEntry::Steam(entry), handle));
                 }
+                state.game_entries.extend(new_entries);
+                Task::done(Message::SyncGamesToDisk)
+                
             },
             Err(e) => {
                 eprintln!("{}", e);
+                Task::none()
             },
         }
-        Task::none() 
+        //Task::done(Message::SyncGamesToDisk)
 }
