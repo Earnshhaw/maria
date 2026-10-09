@@ -117,12 +117,22 @@ impl GameEntry {
             GameEntry::Steam(..) => {return}
         }
     }
-    
     pub async fn run_game(&self) -> io::Result<Child> {
         self.make_prefix();
         command_build(self).spawn()
     }
-
+    pub fn get_name(&self) -> String {
+        match &self {
+            GameEntry::Local(f) => f.get_title().to_owned(),
+            GameEntry::Steam(f) => f.get_title().to_owned()
+        }
+    }
+    pub fn id_as_string(&self) -> String {
+        match &self {
+            GameEntry::Local(s) => {s.get_id().to_string()},
+            GameEntry::Steam(s) => {s.get_appid().to_string()}
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

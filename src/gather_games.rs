@@ -2,13 +2,13 @@
 use std::{fs::{create_dir_all, read_dir, read_to_string, write}, path::{Path, PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
-use steamgriddb_api::QueryType;
+use steamgriddb_api::{QueryType, query_parameters::{MimeType, Platform}};
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
+use thiserror::Error;
 use crate::{api_keys::steamgriddb_api_key, launch::{GameEntry, LocalEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}};
 
 const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
-const PLACEHOLDER_GRID: &str = "blank.jpg";
 
 impl GameEntry {
     pub fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -59,9 +59,21 @@ fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
     steam_dir.join("steamapps")
 }
 
-pub fn fetch_steam_games() -> Result<Vec<SteamEntry>, Box<dyn std::error::Error>> {
+#[derive(Error, Clone, Debug)]
+pub enum CError {
+    #[error("Io error")]
+    IOError,
+    #[error("Parse error")]
+    ParseError,
+    #[error("Net error")]
+    NetError
+}
+
+pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, CError> {
+    let steam_client = Arc::new(steamgriddb_api::Client::new(steamgriddb_api_key()));
+    let client = Client::new();
     let steam_dir = steam_dir().unwrap();
-    let manifest_paths: Vec<PathBuf> = read_dir(manifests_dir(&steam_dir))?
+    let manifest_paths: Vec<PathBuf> = read_dir(manifests_dir(&steam_dir)).map_err(|_| CError::IOError)?
         .filter_map(Result::ok)
         .filter_map(|e| e.path().extension().and_then(|ext| {if ext.to_string_lossy().contains("acf") {Some(e.path())} else {None}}))
         .collect();
@@ -78,8 +90,14 @@ pub fn fetch_steam_games() -> Result<Vec<SteamEntry>, Box<dyn std::error::Error>
              Some(name) => {name},
              None => continue
          };
-         let id: u64 = root_contents["appid"].parse()?;
-         let grid_path = app_data_dir().unwrap().join(format!("grids/{}.jpg", id));
+         let id: u64 = root_contents["appid"].parse().map_err(|e| std::io::Error::last_os_error()).map_err(|_| CError::ParseError)?;
+         let mut grid_path = app_data_dir().unwrap().join(format!("grids/{}.png", id));
+         if !grid_path.try_exists().map_err(|_| CError::IOError)? {
+             let arc_stmdb = Arc::clone(&steam_client);
+             if let Err(e) = get_grid_for_id(id, client.clone(), arc_stmdb).await.map_err(|_| CError::NetError) {
+                 grid_path = app_data_dir().unwrap().join("grids/blank.png");
+             }
+         }
          
          let game_entry = SteamEntry::new(id, title, grid_path);
          game_entries.push(game_entry);
@@ -87,6 +105,19 @@ pub fn fetch_steam_games() -> Result<Vec<SteamEntry>, Box<dyn std::error::Error>
     
     Ok(game_entries)
 }
+
+async fn get_grid_for_id(id: u64, client: Client, steamclient: Arc<steamgriddb_api::Client>) -> Result<(), CError> {
+    println!("{}\n", id);    
+    let mut res = steamclient.get_images_for_platform_id(&Platform::Steam, &id.to_string(), &QueryType::Grid(Some(steamgriddb_api::query_parameters::GridQueryParameters {mimes: Some(&[MimeType::Png]), ..Default::default()}))).await.map_err(|e| {eprint!("{}", e); CError::NetError})?;
+    let chosen_img = res.remove(rand::random_range(0..res.len()));
+    let response = client.get(&chosen_img.url).send().await.map_err(|e| {eprint!("{}", e); CError::NetError})?.bytes().await.map_err(|_| CError::NetError)?;
+    let grid_path = app_data_dir().unwrap().join(format!("grids/{}.png", id));
+    let mut file = File::create_new(grid_path).await.map_err(|e| CError::IOError)?;
+    file.write_all(&response).await.map_err(|_| CError::IOError)?;
+    
+    Ok(())
+}
+
 
 fn is_valid_game(name: &str) -> Option<String> {
     let no_no_words = ["Proton", "Runtime", "Linux Runtime", "Steamworks Common", "EasyAntiCheat"]; //enough for now

@@ -2449,6 +2449,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "steamgriddb_api",
+ "thiserror 2.0.21",
  "tokio",
  "toml",
  "uuid",
