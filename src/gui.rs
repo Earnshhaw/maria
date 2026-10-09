@@ -1,6 +1,6 @@
 use iced::{Element, Task, widget::{image::Handle, row}};
 
-use crate::launch::{GameEntry, Runner};
+use crate::launch::{GameEntry, LocalEntry, Runner};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {

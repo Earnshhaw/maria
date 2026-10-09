@@ -15,6 +15,12 @@ pub enum GameEntry {
     Local(LocalEntry)
 }
 
+impl Default for GameEntry {
+    fn default() -> Self {
+        GameEntry::Local(LocalEntry::default())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SteamEntry {
     appid: u64,
@@ -22,7 +28,7 @@ pub struct SteamEntry {
     grid_path: PathBuf
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct LocalEntry {
     title: String, 
     id: Uuid, 
