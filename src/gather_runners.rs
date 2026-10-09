@@ -1,6 +1,8 @@
 #![allow(unused)]
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 
+use serde::{Deserialize, Serialize};
+
 #[cfg(target_os = "linux")]
 pub fn steam_dir() -> Option<PathBuf> {
     dirs::data_local_dir().map(|dir| dir.join("Steam"))
@@ -8,7 +10,9 @@ pub fn steam_dir() -> Option<PathBuf> {
 
 #[cfg(target_os = "windows")]
 pub fn steam_dir() -> Option<PathBuf> {
-    todo!()
+    let winpath = PathBuf::from("C:/Program Files (x86)/Steam");
+    if !winpath.exists() {Some(winpath)} 
+    None
 }
 
 #[cfg(target_os = "linux")]
@@ -22,14 +26,14 @@ fn bottles_dir() -> Option<PathBuf> {
 }
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    let dir_entries: Vec<DirEntry> = read_dir(protons_dir)?.filter_map(|e| e.ok()).collect();
+    let dir_entries: Vec<DirEntry> = read_dir(protons_dir)?.filter_map(Result::ok).collect();
     let mut proton_versions = vec![];
     for dir in dir_entries {
         if !dir.path().is_dir() {
             continue;
         }
         
-        let dir_contents: Vec<DirEntry> = read_dir(dir.path())?.filter_map(|e| e.ok()).collect();
+        let dir_contents: Vec<DirEntry> = read_dir(dir.path())?.filter_map(Result::ok).collect();
         if valid_proton_dir(&dir_contents) {
             proton_versions.push(dir.path());
         }
@@ -46,7 +50,7 @@ fn valid_proton_dir(dir_contents: &Vec<DirEntry>) -> bool {
     }
 }
 
-pub fn init_runners() -> Vec<RunnerEntry> {
+pub fn fetch_runners() -> Vec<RunnerEntry> {
     let mut runners: Vec<PathBuf> = vec![];
     if let Some(steam_dir) = steam_dir() {
         if let Ok(steam_proton) = scan_dir(&steam_dir.join("steamapps/common")) {
@@ -86,7 +90,7 @@ fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
     unique_runners 
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Deserialize, Serialize)]
 pub struct RunnerEntry {
     name: String,
     path: PathBuf,

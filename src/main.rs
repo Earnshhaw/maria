@@ -1,16 +1,15 @@
 mod launch;
+mod boot;
 mod config;
 mod library;
-mod id;
+mod gui;
+mod api_keys;
 mod gather_runners;
-use std::{collections::BTreeMap};
-use launch::{Runner};
-use crate::{launch::LocalEntry, library::{fetch_local_games}};
+use iced::application;
+use crate::{boot::boot, gui::State};
 
-
-fn main() {
-    let x = fetch_local_games().unwrap();
-    let id = x.iter().find(|x| x.get_title() == "sh2").unwrap().get_id();
-    let z = LocalEntry::new("sh2r", *id, "/usr/local/games/Konami/Silent Hill 2/sh2pc.exe", "/usr/local/games/Konami/Silent Hill 2", BTreeMap::new(), &[], Runner::Wine);
-    z.save().unwrap()
+fn main() -> iced::Result {
+    let (boot, _) = boot();
+    application(boot, State::update, State::view)
+        .run()
 }

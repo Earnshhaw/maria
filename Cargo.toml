@@ -5,8 +5,12 @@ edition = "2024"
 
 [dependencies]
 acf-parser = "0.1.0"
-copy = "0.2.9"
 dirs = "7.0.0"
+iced = { version = "0.14.0", features = ["image", "tokio"] }
+rand = "0.10.3"
+reqwest = "0.13.5"
 serde = { version = "1.0.229", features = ["derive"] }
+steamgriddb_api = "0.3.1"
+tokio = { version = "1.53.2", features = ["full"] }
 toml = {version = "1.1.6", features = ["serde"]}
 uuid = { version = "1.27.0", features = ["v4", "serde"] }

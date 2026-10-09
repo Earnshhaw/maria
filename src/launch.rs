@@ -2,9 +2,11 @@
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
 use serde::{Deserialize, Serialize};
+use tokio::io;
+use tokio::process::{Child, Command};
 use uuid::Uuid;
+use crate::gather_runners::RunnerEntry;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum GameEntry {
@@ -15,13 +17,15 @@ pub enum GameEntry {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SteamEntry {
     pub appid: u64,
-    pub title: String
+    pub title: String,
+    pub grid_path: PathBuf
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LocalEntry {
     title: String, 
     id: Uuid, 
+    grid_path: PathBuf,
     binary_path: PathBuf, 
     working_dir: PathBuf, 
     env_vars: BTreeMap<String, String>, 
@@ -33,6 +37,7 @@ impl LocalEntry {
     pub fn new(
         title: impl Into<String>, 
         id: impl Into<Uuid>, 
+        grid_path: impl Into<PathBuf>,
         binary_path: impl Into<PathBuf>, 
         working_dir: impl Into<PathBuf>, 
         env_vars: BTreeMap<String, String>, 
@@ -41,6 +46,7 @@ impl LocalEntry {
     {
         LocalEntry { 
             title: title.into(), 
+            grid_path: grid_path.into(),
             id: id.into(), 
             binary_path: binary_path.into(), 
             working_dir: working_dir.into(), 
@@ -53,6 +59,9 @@ impl LocalEntry {
 impl LocalEntry {
     pub fn get_title(&self) -> &str {
         &self.title
+    }
+    pub fn get_grid(&self) -> &Path {
+        &self.grid_path
     }
     pub fn get_id(&self) -> &Uuid {
         &self.id
@@ -85,11 +94,11 @@ impl GameEntry {
                     }
                 }
             },
-            GameEntry::Steam(_) => {return}
+            GameEntry::Steam(..) => {return}
         }
     }
     
-    pub fn run_game(&self) -> Result<Child, std::io::Error> {
+    pub async fn run_game(&self) -> io::Result<Child> {
         self.make_prefix();
         command_build(self).spawn()
     }
@@ -101,7 +110,7 @@ pub enum Runner {
     Native,
     #[default]
     Wine,
-    Proton(ProtonVariant, Store),
+    Proton(ProtonVariant),
 }
 
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -109,7 +118,7 @@ pub enum ProtonVariant {
     GEProton, //latest ge proton
     #[default]
     UMUProton, //umu-proton, latest stable valve proton + umu fixes
-    Custom(PathBuf) //path to a local proton folder, must have proton file inside of it 
+    Custom(RunnerEntry) //path to a local proton folder, must have proton file inside of it 
 }
 
 impl ProtonVariant {
@@ -117,7 +126,7 @@ impl ProtonVariant {
         match self {
             Self::GEProton => String::from("GE-Proton"),
             Self::UMUProton => String::from("UMU-Proton"),
-            Self::Custom(p) => String::from(p.to_string_lossy())
+            Self::Custom(p) => String::from(p.path().to_string_lossy())
         }
     }
 }
@@ -174,11 +183,11 @@ fn command_build(entry: &GameEntry) -> Command {
                         .args(game.get_launch_args());
                     cmd
                 },
-                Runner::Proton(variant, store) => {
+                Runner::Proton(variant) => {
                     let mut cmd = Command::new("umu-run");
                     cmd
                         .current_dir(game.get_working_dir()) //questionable ?
-                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id())), ("STORE", store.get_string())])
+                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id()))])
                         .arg(game.get_binary_path())
                         .envs(game.get_env_vars())
                         .args(game.get_launch_args());

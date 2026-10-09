@@ -1,10 +1,14 @@
 #![allow(unused)]
-use std::{fs::{create_dir_all, read_dir, read_to_string, write}, path::PathBuf};
+use std::{fs::{create_dir_all, read_dir, read_to_string, write}, path::{Path, PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
+use reqwest::Client;
+use steamgriddb_api::QueryType;
+use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
-use crate::{gather_runners::steam_dir, launch::{LocalEntry, SteamEntry, app_data_dir}};
+use crate::{api_keys::steamgriddb_api_key, gather_runners::steam_dir, launch::{LocalEntry, SteamEntry, app_data_dir}};
 
 const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
+const PLACEHOLDER_GRID: &str = "blank.jpg";
 
 impl LocalEntry {
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -68,7 +72,10 @@ pub fn fetch_steam_games() -> Result<Vec<SteamEntry>, Box<dyn std::error::Error>
              Some(name) => {name},
              None => continue
          };
-         let game_entry = SteamEntry {appid: root_contents["appid"].parse()?, title};
+         let id: u64 = root_contents["appid"].parse()?;
+         let grid_path = app_data_dir().unwrap().join(format!("grids/{}.jpg", id));
+         
+         let game_entry = SteamEntry {appid: id, title, grid_path};
          game_entries.push(game_entry);
     }
     
@@ -81,4 +88,15 @@ fn filter_non_games(name: &str) -> Option<String> {
         return None;
     }
     Some(name.to_owned())
+}
+
+pub fn ensure_unique_id() -> Uuid {
+    let mut id = Uuid::new_v4();
+    let x: Vec<String> = read_dir(app_data_dir().unwrap()).unwrap().filter_map(|e| e.ok().map(|x| x.file_name().to_string_lossy().into_owned())).collect();
+    while x.iter().any(|uuid| *uuid == id.to_string()) {
+        id = Uuid::new_v4();
+    }
+    id
+}
+
 }
