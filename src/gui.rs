@@ -1,4 +1,4 @@
-use iced::{Element, Task, widget::{container, image::Handle, row}};
+use iced::{Element, Task, widget::{image::Handle, row}};
 
 use crate::launch::{GameEntry, Runner};
 
@@ -10,7 +10,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    LoadGrids
+    
 }
 
 impl State {
@@ -19,7 +19,6 @@ impl State {
     }
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::LoadGrids => {}
         }
     }
 }

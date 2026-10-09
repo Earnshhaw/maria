@@ -1,10 +1,8 @@
 #![allow(unused)]
 use std::{error::Error, fs::{File, create_dir_all, read_to_string, write}, path::PathBuf};
 use serde::{Deserialize, Serialize};
+use crate::dirs::app_config_dir;
 
-pub fn app_config_dir() -> PathBuf {
-    dirs::config_dir().unwrap().join("maria")
-}
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct AppConfig {

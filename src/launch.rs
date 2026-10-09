@@ -2,11 +2,12 @@
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
+use iced::widget::grid;
 use serde::{Deserialize, Serialize};
 use tokio::io;
 use tokio::process::{Child, Command};
 use uuid::Uuid;
-use crate::gather_runners::RunnerEntry;
+use crate::{gather_runners::RunnerEntry, dirs::prefix_dir};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum GameEntry {
@@ -16,9 +17,9 @@ pub enum GameEntry {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SteamEntry {
-    pub appid: u64,
-    pub title: String,
-    pub grid_path: PathBuf
+    appid: u64,
+    title: String,
+    grid_path: PathBuf
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -54,9 +55,6 @@ impl LocalEntry {
             launch_args: launch_args.into_iter().map(|e| e.to_string()).collect(), 
             runner: runner }
     }
-}
-
-impl LocalEntry {
     pub fn get_title(&self) -> &str {
         &self.title
     }
@@ -80,6 +78,22 @@ impl LocalEntry {
     }
     pub fn get_runner(&self) -> &Runner {
         &self.runner
+    }
+}
+
+impl SteamEntry {
+    pub fn new(appid: impl Into<u64>, title: impl Into<String>, grid_path: impl Into<PathBuf>) -> SteamEntry {
+        SteamEntry { appid: appid.into(), title: title.into(), grid_path: grid_path.into() }
+    }
+    
+    pub fn get_appid(&self) -> u64 {
+        self.appid
+    }
+    pub fn get_title(&self) -> &str {
+        &self.title
+    }
+    pub fn get_grid(&self) -> &Path {
+        &self.grid_path
     }
 }
 
@@ -131,30 +145,6 @@ impl ProtonVariant {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-pub enum Store {
-    Steam,
-    EGS,
-    #[default]
-    None,
-}
-
-impl Store {
-    pub fn get_string(&self) -> String {
-        match self {
-            Self::EGS => {
-                String::from("egs")
-            },
-            Self::Steam => {
-                String::from("steam")
-            }
-            Self::None => {
-                String::from("none")
-            }
-        }
-    }
-}
-
 fn command_build(entry: &GameEntry) -> Command {
     match &entry {
         GameEntry::Steam(steam) => {
@@ -198,11 +188,3 @@ fn command_build(entry: &GameEntry) -> Command {
     }
 }
 
-pub fn prefix_dir(id: &Uuid) -> String {
-    let data_dir = app_data_dir().expect("");
-    data_dir.join(id.to_string()).join("prefix").to_string_lossy().into_owned()
-}
-
-pub fn app_data_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|e| e.join("maria"))
-}

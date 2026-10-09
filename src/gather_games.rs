@@ -5,22 +5,28 @@ use reqwest::Client;
 use steamgriddb_api::QueryType;
 use tokio::{fs::File, io::AsyncWriteExt};
 use uuid::Uuid;
-use crate::{api_keys::steamgriddb_api_key, gather_runners::steam_dir, launch::{LocalEntry, SteamEntry, app_data_dir}};
+use crate::{api_keys::steamgriddb_api_key, launch::{GameEntry, LocalEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}};
 
 const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
 const PLACEHOLDER_GRID: &str = "blank.jpg";
 
-impl LocalEntry {
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let validated = validated_game_dir(self.get_id())?.join(GAME_CFG_ENTRY_NAME);
-        let formatted = toml::to_string_pretty(&self)?;
-        write(validated, formatted)?;
-             
+impl GameEntry {
+    pub fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
+        match &self {
+            GameEntry::Local(game) => {
+                let validated = game_dir_exists(game.get_id())?.join(GAME_CFG_ENTRY_NAME);
+                let formatted = toml::to_string_pretty(self)?;
+                write(validated, formatted)?;},
+            GameEntry::Steam(game) => {
+                let validated = game_dir_exists(game.get_appid())?.join(GAME_CFG_ENTRY_NAME);
+                let formatted = toml::to_string_pretty(self)?;
+                write(validated, formatted)?;}
+        }
         Ok(())
     }
 }
 
-fn validated_game_dir(uuid: &Uuid) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let game_dir = app_data_dir().unwrap().join(&uuid.to_string());
     if !game_dir.try_exists()? {
         create_dir_all(&game_dir)?;
@@ -28,7 +34,7 @@ fn validated_game_dir(uuid: &Uuid) -> Result<PathBuf, Box<dyn std::error::Error>
     Ok(game_dir)
 }
 
-pub fn fetch_local_games() -> Result<Vec<LocalEntry>, Box<dyn std::error::Error>> {
+pub fn load_saved_games() -> Result<Vec<GameEntry>, Box<dyn std::error::Error>> {
     let app_data_dir = app_data_dir().unwrap();
     let game_folders: Vec<PathBuf> = read_dir(&app_data_dir)?
         .filter_map(Result::ok)
@@ -41,7 +47,7 @@ pub fn fetch_local_games() -> Result<Vec<LocalEntry>, Box<dyn std::error::Error>
             .find(|e| e.file_name().to_string_lossy() == GAME_CFG_ENTRY_NAME);
         if let Some(entry) = entry_file {
             let unserd_contents = read_to_string(entry.path())?;
-            let entry: LocalEntry = toml::from_str(&unserd_contents)?;
+            let entry: GameEntry = toml::from_str(&unserd_contents)?;
             game_entries.push(entry);
         }
     }
@@ -68,35 +74,24 @@ pub fn fetch_steam_games() -> Result<Vec<SteamEntry>, Box<dyn std::error::Error>
              Err(e) => {eprintln!("{e}"); continue}
          };
          let root_contents = &contents.entries[0].expressions;
-         let title: String = match filter_non_games(&root_contents["name"]) {
+         let title = match is_valid_game(&root_contents["name"]) {
              Some(name) => {name},
              None => continue
          };
          let id: u64 = root_contents["appid"].parse()?;
          let grid_path = app_data_dir().unwrap().join(format!("grids/{}.jpg", id));
          
-         let game_entry = SteamEntry {appid: id, title, grid_path};
+         let game_entry = SteamEntry::new(id, title, grid_path);
          game_entries.push(game_entry);
     }
     
     Ok(game_entries)
 }
 
-fn filter_non_games(name: &str) -> Option<String> {
-    let no_no_words = ["Proton", "Runtime", "Linux Runtime", "Steamworks Common", "EasyAntiCheat"];
+fn is_valid_game(name: &str) -> Option<String> {
+    let no_no_words = ["Proton", "Runtime", "Linux Runtime", "Steamworks Common", "EasyAntiCheat"]; //enough for now
     if no_no_words.iter().any(|forbidden| name.contains(forbidden)) {
         return None;
     }
     Some(name.to_owned())
-}
-
-pub fn ensure_unique_id() -> Uuid {
-    let mut id = Uuid::new_v4();
-    let x: Vec<String> = read_dir(app_data_dir().unwrap()).unwrap().filter_map(|e| e.ok().map(|x| x.file_name().to_string_lossy().into_owned())).collect();
-    while x.iter().any(|uuid| *uuid == id.to_string()) {
-        id = Uuid::new_v4();
-    }
-    id
-}
-
 }

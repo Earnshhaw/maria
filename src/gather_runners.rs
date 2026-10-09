@@ -1,29 +1,8 @@
 #![allow(unused)]
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
-
 use serde::{Deserialize, Serialize};
+use crate::dirs::{steam_dir, bottles_dir, heroic_dir};
 
-#[cfg(target_os = "linux")]
-pub fn steam_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("Steam"))
-}
-
-#[cfg(target_os = "windows")]
-pub fn steam_dir() -> Option<PathBuf> {
-    let winpath = PathBuf::from("C:/Program Files (x86)/Steam");
-    if !winpath.exists() {Some(winpath)} 
-    None
-}
-
-#[cfg(target_os = "linux")]
-fn heroic_dir() -> Option<PathBuf> {
-    dirs::config_local_dir().map(|dir| dir.join("heroic/tools/proton"))
-}
-
-#[cfg(target_os = "linux")]
-fn bottles_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("bottles/runners"))
-}
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let dir_entries: Vec<DirEntry> = read_dir(protons_dir)?.filter_map(Result::ok).collect();
