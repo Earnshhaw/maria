@@ -19,9 +19,7 @@ pub enum Message {
     SyncGamesToDisk,
     Synced(Result<(), CError>),
     LaunchGame(String),
-    GameLaunched((Result<Arc<Child>, CError>, String)),
-    WatchProccess(Arc<Child>),
-    ProcessResult(Result<ExitStatus, CError>)
+    GameLaunched(Result<ExitStatus, CError>)
 }
 
 fn panel_el<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
@@ -50,52 +48,36 @@ impl State {
             Message::SyncGamesToDisk => sync_games(self),
             Message::Synced(status) => synced(self, status),
             Message::LaunchGame(strid) => launch_game(self, strid),
-            Message::GameLaunched((res, id)) => launched(self, res, id),
-            Message::WatchProccess(child) => watch_proccess(child),
-            Message::ProcessResult(res) => child_terminated(self, res)
+            Message::GameLaunched(status) => game_terminated(self, status)
         }
     }
 }
 
-fn child_terminated(state: &mut State, result: Result<ExitStatus, CError>) -> Task<Message> {
-    match result {
-        Ok(s) => {
-            println!("{}", s.code().unwrap());
-        },
-        Err(e) => {
-           eprintln!("{e} Process failed ?");
-        }
-    }
+
+fn game_terminated(state: &mut State, status: Result<ExitStatus, CError>) -> Task<Message> {
     state.running_game.take();
+    match status {
+        Ok(s) => {
+            println!("{}", s.success())
+        },
+        Err(e) => {eprintln!("{}", e)}
+    }
     Task::none()
 }
-fn watch_proccess(child: Arc<Child>) -> Task<Message> {
-    let mut inner = Arc::into_inner(child).unwrap();
-    Task::perform(async move {
-        inner.wait().await.map_err(|_| CError::IOError)
-    }, Message::ProcessResult)
-}
-fn launched(state: &mut State, result: Result<Arc<Child>, CError>, id: String) -> Task<Message> {
-    match result {
-        Ok(ch) => {
-            let (entry, _) = state.game_entries.iter().find(|(entry, _)| entry.id_as_string() == id).unwrap();
-            state.running_game = Some(entry.to_owned());
-            Task::done(Message::WatchProccess(ch))
-        },
-        Err(e) => {eprintln!("{}",e); Task::none()}
-    }
-}
 fn launch_game(state: &mut State, strid: String) -> Task<Message> {
-    let running_game = state.game_entries.iter().find(|stored| stored.0.id_as_string() == strid).cloned();
-    if let Some(game) = running_game {
-        Task::perform(async move {
-            let (game, _) = game;
-            (game.run_game().await, strid)
-        },  Message::GameLaunched)
+    if state.running_game.is_some() {
+        return Task::none();
+    }
+    let running_game = state.game_entries.iter().find(|(entry, _)| entry.id_as_string() == strid);
+    if let Some((game, _)) = running_game.cloned() {
+        state.running_game = Some(game.clone());
+        iced_runtime::task::blocking(move |mut sender| {
+            let child = game.run_game().unwrap().wait().map_err(|_| CError::IOError);
+            let _ = sender.try_send(child);
+        }).map(Message::GameLaunched)
     } else {
         Task::none()
     }
-    
 }
 fn synced(state: &mut State, status: Result<(), CError>) -> Task<Message> {
     match status {

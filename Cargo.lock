@@ -2445,6 +2445,7 @@ dependencies = [
  "acf-parser",
  "dirs",
  "iced",
+ "iced_runtime",
  "rand 0.10.3",
  "reqwest 0.13.5",
  "serde",

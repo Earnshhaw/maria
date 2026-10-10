@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use iced::widget::grid;
 use serde::{Deserialize, Serialize};
-use tokio::io;
-use tokio::process::{Child, Command};
+use std::io;
+use std::process::{Child, Command};
 use uuid::Uuid;
 use crate::gather_games::CError;
 use crate::{gather_runners::RunnerEntry, dirs::prefix_dir};
@@ -119,9 +119,9 @@ impl GameEntry {
             GameEntry::Steam(..) => {return}
         }
     }
-    pub async fn run_game(&self) -> Result<Arc<Child>, CError> {
+    pub fn run_game(&self) -> Result<Child, CError> {
         self.make_prefix();
-        command_build(self).spawn().map(|ch| Arc::new(ch)).map_err(|_| CError::IOError)
+        command_build(self).spawn().map_err(|_| CError::IOError)
     }
     pub fn get_name(&self) -> String {
         match &self {
