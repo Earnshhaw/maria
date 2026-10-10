@@ -62,7 +62,7 @@ fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
 
 #[derive(Error, Debug, Clone)]
 pub enum CError {
-    #[error("")]
+    #[error("Io error")]
     IOError,
     #[error("Parse error")]
     ParseError,

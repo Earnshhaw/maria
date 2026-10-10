@@ -2,11 +2,13 @@
 use std::collections::{BTreeMap};
 use std::fs::{create_dir_all};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use iced::widget::grid;
 use serde::{Deserialize, Serialize};
 use tokio::io;
 use tokio::process::{Child, Command};
 use uuid::Uuid;
+use crate::gather_games::CError;
 use crate::{gather_runners::RunnerEntry, dirs::prefix_dir};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,9 +119,9 @@ impl GameEntry {
             GameEntry::Steam(..) => {return}
         }
     }
-    pub async fn run_game(&self) -> io::Result<Child> {
+    pub async fn run_game(&self) -> Result<Arc<Child>, CError> {
         self.make_prefix();
-        command_build(self).spawn()
+        command_build(self).spawn().map(|ch| Arc::new(ch)).map_err(|_| CError::IOError)
     }
     pub fn get_name(&self) -> String {
         match &self {
@@ -165,7 +167,7 @@ fn command_build(entry: &GameEntry) -> Command {
     match &entry {
         GameEntry::Steam(steam) => {
             let mut cmd = Command::new("steam");
-            cmd.args(["-appEntryType", &steam.appid.to_string()]);
+            cmd.args(["-applaunch", &steam.appid.to_string()]);
             cmd
         }
         GameEntry::Local(game) => {

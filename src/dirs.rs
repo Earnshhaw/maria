@@ -22,7 +22,7 @@ pub fn steam_dir() -> Option<PathBuf> {
 #[cfg(target_os = "windows")]
 pub fn steam_dir() -> Option<PathBuf> {
     let winpath = PathBuf::from("C:/Program Files (x86)/Steam");
-    if !winpath.exists() {Some(winpath)} 
+    if winpath.exists() {Some(winpath)} 
     None
 }
 

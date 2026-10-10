@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{process::ExitStatus, rc::Rc, sync::Arc};
 
 use iced::{Element, Length, Task, widget::{button, column, container, image::{self, Handle}, mouse_area, row, scrollable, text}};
-use tokio::{spawn, task::JoinSet};
+use tokio::{process::Child, spawn, task::JoinSet};
 
 use crate::{boot::PLACEHOLDER_GRID, dirs::app_data_dir, gather_games::{CError, fetch_steam_games, load_saved_games, save_to_disk}, launch::{GameEntry, LocalEntry, Runner, SteamEntry}, style::container_style};
 
@@ -18,7 +18,10 @@ pub enum Message {
     SteamGamesFetched(Result<Vec<SteamEntry>, CError>),
     SyncGamesToDisk,
     Synced(Result<(), CError>),
-    RunGame(String)
+    LaunchGame(String),
+    GameLaunched((Result<Arc<Child>, CError>, String)),
+    WatchProccess(Arc<Child>),
+    ProcessResult(Result<ExitStatus, CError>)
 }
 
 fn panel_el<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
@@ -26,7 +29,7 @@ fn panel_el<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
         mouse_area(
     column![
         image::Image::new(handle).height(200),
-    ]).on_double_click(Message::RunGame(entry.id_as_string()))).style(container_style)
+    ]).on_double_click(Message::LaunchGame(entry.id_as_string()))).style(container_style)
     .into()
 }
 
@@ -46,13 +49,53 @@ impl State {
             Message::SteamGamesFetched(result) => steam_games_fetched(self, result),
             Message::SyncGamesToDisk => sync_games(self),
             Message::Synced(status) => synced(self, status),
-            Message::RunGame(strid) => run_game(self, strid)
+            Message::LaunchGame(strid) => launch_game(self, strid),
+            Message::GameLaunched((res, id)) => launched(self, res, id),
+            Message::WatchProccess(child) => watch_proccess(child),
+            Message::ProcessResult(res) => child_terminated(self, res)
         }
     }
 }
 
-fn run_game(state: &mut State, strid: String) -> Task<Message> {
-    todo!()
+fn child_terminated(state: &mut State, result: Result<ExitStatus, CError>) -> Task<Message> {
+    match result {
+        Ok(s) => {
+            println!("{}", s.code().unwrap());
+        },
+        Err(e) => {
+           eprintln!("{e} Process failed ?");
+        }
+    }
+    state.running_game.take();
+    Task::none()
+}
+fn watch_proccess(child: Arc<Child>) -> Task<Message> {
+    let mut inner = Arc::into_inner(child).unwrap();
+    Task::perform(async move {
+        inner.wait().await.map_err(|_| CError::IOError)
+    }, Message::ProcessResult)
+}
+fn launched(state: &mut State, result: Result<Arc<Child>, CError>, id: String) -> Task<Message> {
+    match result {
+        Ok(ch) => {
+            let (entry, _) = state.game_entries.iter().find(|(entry, _)| entry.id_as_string() == id).unwrap();
+            state.running_game = Some(entry.to_owned());
+            Task::done(Message::WatchProccess(ch))
+        },
+        Err(e) => {eprintln!("{}",e); Task::none()}
+    }
+}
+fn launch_game(state: &mut State, strid: String) -> Task<Message> {
+    let running_game = state.game_entries.iter().find(|stored| stored.0.id_as_string() == strid).cloned();
+    if let Some(game) = running_game {
+        Task::perform(async move {
+            let (game, _) = game;
+            (game.run_game().await, strid)
+        },  Message::GameLaunched)
+    } else {
+        Task::none()
+    }
+    
 }
 fn synced(state: &mut State, status: Result<(), CError>) -> Task<Message> {
     match status {
