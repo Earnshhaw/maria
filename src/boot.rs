@@ -1,5 +1,5 @@
 use iced::{widget::image::Handle};
-use crate::{dirs::{app_data_dir, persistence_dirs_valid}, gather_games::load_saved_games, gather_runners::fetch_runners, gui::State, launch::{GameEntry, ProtonVariant, Runner}};
+use crate::{config::read_config, dirs::{app_data_dir, persistence_dirs_valid}, gather_games::load_saved_games, gather_runners::fetch_runners, gui::State, launch::{GameEntry, ProtonVariant, Runner}};
 
 pub const PLACEHOLDER_GRID: &str = "blank.png";
 
@@ -7,6 +7,7 @@ pub fn boot() -> State {
     if !persistence_dirs_valid() {
         panic!("Persistence dirs could not be initialized. Aborting.");
     }
+    let config = read_config().unwrap_or_default();
     
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
     for entry in load_saved_games().unwrap() {
@@ -38,9 +39,5 @@ pub fn boot() -> State {
         runners.extend(vec![Runner::Native, Runner::Wine, Runner::Proton(ProtonVariant::GEProton), Runner::Proton(ProtonVariant::UMUProton)]);
     }
     
-    State {
-        game_entries: game_entries,
-        runners: runners,
-        running_game: None
-    }
+    State::new(game_entries, runners, config)
 }

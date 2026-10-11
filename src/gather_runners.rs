@@ -1,4 +1,3 @@
-#![allow(unused)]
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
 use crate::{dirs::{bottles_dir, heroic_dir, steam_dir}, gather_games::Error};

@@ -1,12 +1,21 @@
 use std::{process::ExitStatus};
-use iced::{Element, Length, Task, widget::{button, column, container, image::{self, Handle}, mouse_area, row, scrollable}};
-use crate::{boot::PLACEHOLDER_GRID, dirs::{app_data_dir, steam_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, launch::{GameEntry, Runner, SteamEntry}, style::container_style};
+use iced::{Element, Length, Task, widget::{button, column, container, image::{self, Handle}, mouse_area, pane_grid, row, scrollable, text}};
+use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir, steam_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, launch::{GameEntry, Runner, SteamEntry}, style::{gamegrid_container, sidebar_container, topbar_container}};
+
+#[derive(Debug, Clone)]
+pub struct State {
+    game_entries: Vec<(GameEntry, Handle)>,
+    runners: Vec<Runner>,
+    running_game: Option<GameEntry>,
+    config: AppConfig,
+    pane: pane_grid::State<Pane>
+}
 
 #[derive(Debug, Clone, Default)]
-pub struct State {
-    pub game_entries: Vec<(GameEntry, Handle)>,
-    pub runners: Vec<Runner>,
-    pub running_game: Option<GameEntry>
+enum Pane {
+    #[default]
+    GameGrids,
+    SidebarView
 }
 
 #[derive(Debug, Clone)]
@@ -16,41 +25,80 @@ pub enum Message {
     SyncGamesToDisk,
     Synced(Result<(), Error>),
     LaunchGame(String),
-    GameLaunched(Result<ExitStatus, Error>)
+    GameLaunched(Result<ExitStatus, Error>),
+    PaneResized(pane_grid::ResizeEvent),
 }
 
-fn panel_el<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
+fn single_grid_entry<'a>(entry: &GameEntry, handle: &Handle) -> Element<'a, Message> {
     container(
         mouse_area(
     column![
         image::Image::new(handle).height(200),
-    ]).on_double_click(Message::LaunchGame(entry.id_as_string()))).style(container_style)
+    ]).on_double_click(Message::LaunchGame(entry.id_as_string())))
     .into()
+}
+
+fn game_grid_view(state: &State) -> Element<'_,Message> {
+    let panels = scrollable(state.game_entries.iter().fold(row![], |acc, (entry, handle)| {
+        let pa = acc.push(single_grid_entry(entry, handle));
+        pa
+    }));
+    container(panels)
+        .style(gamegrid_container)
+        .into()
+}
+
+fn sidebar_view(state: &State) -> Element<'_, Message> {
+    let els = text!("SIDEBAR");
+    container(els)
+        .style(sidebar_container)
+        .into()
+}
+
+fn topbar_view(state: &State) -> Element<'_, Message> {
+    let el = container(text!("Top bar. todo"));
+    container(el)
+        .style(topbar_container).width(Length::Fill)
+        .into()
 }
 
 impl State {
     pub fn view(&self) -> Element<'_, Message> {
-        let panels = scrollable(self.game_entries.iter().fold(column![], |acc, (entry, handle)| {
-            let pa = acc.push(panel_el(entry, handle));
-            pa
-        })).height(Length::Fill);
-        let fetch_steam = button("Steam").on_press(Message::FetchSteamGames);
+        let grid = pane_grid(&self.pane, |pane, state, is_maximized| {
+                pane_grid::Content::new(match state {
+                    Pane::GameGrids => game_grid_view(self),
+                    Pane::SidebarView => sidebar_view(self),
+                })
+            })
+            .on_resize(10, Message::PaneResized);
+        column![topbar_view(self), grid].into()
+    }
+       
         
-        row![fetch_steam, panels].into()
-    }      
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::FetchSteamGames => fetch_steam_games_cmd(self),
+            Message::FetchSteamGames => fetch_steam_games_cmd(),
             Message::SteamGamesFetched(result) => steam_games_fetched(self, result),
             Message::SyncGamesToDisk => sync_games(self),
             Message::Synced(status) => synced(self, status),
             Message::LaunchGame(strid) => launch_game(self, strid),
-            Message::GameLaunched(status) => game_terminated(self, status)
+            Message::GameLaunched(status) => game_terminated(self, status),
+            Message::PaneResized(resize) => pane_resized(self, resize)
         }
+    }
+    pub fn new(game_entries: Vec<(GameEntry, Handle)>, runners: Vec<Runner>, config: AppConfig) -> Self {
+        let (mut panes, first) = pane_grid::State::new(Pane::SidebarView);
+        let (_, split) = panes.split(pane_grid::Axis::Vertical, first, Pane::GameGrids).unwrap();
+        panes.resize(split, 0.25);
+        State { game_entries, runners, running_game: None, config, pane: panes}
     }
 }
 
 
+fn pane_resized(state: &mut State, resize_event: pane_grid::ResizeEvent) -> Task<Message> {
+    state.pane.resize(resize_event.split, resize_event.ratio);
+    Task::none()
+}
 fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> Task<Message> {
     state.running_game.take();
     match status {
@@ -113,7 +161,7 @@ fn sync_games(state: &mut State) -> Task<Message> {
         save_to_disk(c).await
     }, Message::Synced)
 }
-fn fetch_steam_games_cmd(state: &mut State) -> Task<Message> {
+fn fetch_steam_games_cmd() -> Task<Message> {
     if !steam_dir().exists() {
         return Task::none()
     }

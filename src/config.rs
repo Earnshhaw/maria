@@ -1,21 +1,20 @@
-#![allow(unused)]
-use std::{error::Error, fs::{File, create_dir_all, read_to_string, write}, path::PathBuf};
+use std::{fs::{File, create_dir_all, read_to_string, write}};
 use serde::{Deserialize, Serialize};
-use crate::dirs::app_config_dir;
+use crate::{dirs::app_config_dir, gather_games::Error};
 
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct AppConfig {
     pub version: String,
     pub display: Display
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Display {
     pub mode: String
 }
 
-pub fn read_config() -> Result<AppConfig, Box<dyn Error>> {
+pub fn read_config() -> Result<AppConfig, Error> {
     let c_dir = app_config_dir();
     if !c_dir.try_exists()? {
         create_dir_all(&c_dir)?;
@@ -30,7 +29,7 @@ pub fn read_config() -> Result<AppConfig, Box<dyn Error>> {
     Ok(des)
 }
 
-pub fn update_config(new_cfg: AppConfig) -> Result<(), Box<dyn Error>> {
+pub fn update_config(new_cfg: AppConfig) -> Result<(), Error> {
     let c_dir = app_config_dir();
     if !c_dir.try_exists()? {
         create_dir_all(&c_dir)?;
