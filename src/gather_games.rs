@@ -1,42 +1,39 @@
-#![allow(unused)]
-use std::{fs::{read_dir, read_to_string}, path::{Path, PathBuf}, sync::Arc};
+use crate::{api_keys::steamgriddb_api_key, launch::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}};
+use std::{fs::{read_dir, read_to_string}, path::{PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
 use steamgriddb_api::{QueryType, query_parameters::{MimeType, Platform}};
 use tokio::{fs::{File, create_dir_all, write}, io::AsyncWriteExt};
-use uuid::Uuid;
 use thiserror::Error;
-use crate::{api_keys::steamgriddb_api_key, launch::{GameEntry, LocalEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}};
 
 const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
 
-
-pub async fn save_to_disk(gameentries: Vec<GameEntry>) -> Result<(), CError> {
+pub async fn save_to_disk(gameentries: Vec<GameEntry>) -> Result<(), Error> {
     for gameentry in gameentries {
         match &gameentry {
             GameEntry::Local(game) => {
-                let validated = game_dir_exists(game.get_id()).await.map_err(|_| CError::IOError)?.join(GAME_CFG_ENTRY_NAME);
-                let formatted = toml::to_string_pretty(&gameentry).map_err(|_| CError::IOError)?;
-                write(validated, formatted).await.map_err(|_| CError::IOError)?;},
+                let validated = game_dir_exists(game.get_id()).await?.join(GAME_CFG_ENTRY_NAME);
+                let formatted = toml::to_string_pretty(&gameentry)?;
+                write(validated, formatted).await?;},
             GameEntry::Steam(game) => {
                 let validated = game_dir_exists(game.get_appid()).await?.join(GAME_CFG_ENTRY_NAME);
-                let formatted = toml::to_string_pretty(&gameentry).map_err(|_| CError::IOError)?;
-                write(validated, formatted).await.map_err(|_| CError::IOError)?;}
+                let formatted = toml::to_string_pretty(&gameentry)?;
+                write(validated, formatted).await?;}
         }}
     Ok(())
 }
 
 
-async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, CError> {
-    let game_dir = app_data_dir().unwrap().join(&uuid.to_string());
-    if !game_dir.try_exists().map_err(|_| CError::IOError)? {
-        create_dir_all(&game_dir).await.map_err(|_| CError::IOError)?;
+async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Error> {
+    let game_dir = app_data_dir().join(&uuid.to_string());
+    if !game_dir.try_exists()? {
+        create_dir_all(&game_dir).await?;
     }
     Ok(game_dir)
 }
 
-pub fn load_saved_games() -> Result<Vec<GameEntry>, Box<dyn std::error::Error>> {
-    let app_data_dir = app_data_dir().unwrap();
+pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
+    let app_data_dir = app_data_dir();
     let game_folders: Vec<PathBuf> = read_dir(&app_data_dir)?
         .filter_map(Result::ok)
         .filter_map(|e| {if e.path().is_dir() {Some(e.path())} else {None}}).collect();
@@ -61,20 +58,53 @@ fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
 }
 
 #[derive(Error, Debug, Clone)]
-pub enum CError {
+pub enum Error {
     #[error("Io error")]
-    IOError,
+    IOError(String),
     #[error("Parse error")]
     ParseError,
     #[error("Net error")]
-    NetError
+    NetError(String),
+    #[error("")]
+    SerdeError(String),
+    #[error("")]
+    GridDBError(String)
 }
 
-pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, CError> {
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Error::IOError(value.to_string())
+    }
+}
+
+impl From<toml::ser::Error> for Error {
+    fn from(value: toml::ser::Error) -> Self {
+        Error::SerdeError(value.to_string())
+    }
+}
+
+impl From<toml::de::Error> for Error {
+    fn from(value: toml::de::Error) -> Self {
+        Error::SerdeError(value.to_string())
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Error::NetError(value.to_string())
+    }
+}
+
+
+pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
+    if !steam_dir().try_exists()? {
+        return Err(Error::IOError("".to_string())); //maybe redundant ?
+    }
+    
     let steam_client = Arc::new(steamgriddb_api::Client::new(steamgriddb_api_key()));
     let client = Client::new();
-    let steam_dir = steam_dir().unwrap();
-    let manifest_paths: Vec<PathBuf> = read_dir(manifests_dir(&steam_dir)).map_err(|_| CError::IOError)?
+    let steam_dir = steam_dir();
+    let manifest_paths: Vec<PathBuf> = read_dir(manifests_dir(&steam_dir))?
         .filter_map(Result::ok)
         .filter_map(|e| e.path().extension().and_then(|ext| {if ext.to_string_lossy().contains("acf") {Some(e.path())} else {None}}))
         .collect();
@@ -91,14 +121,12 @@ pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, CError> {
              Some(name) => {name},
              None => continue
          };
-         let id: u64 = root_contents["appid"].parse().map_err(|e| std::io::Error::last_os_error()).map_err(|_| CError::ParseError)?;
-         let mut grid_path = app_data_dir().unwrap().join(format!("grids/{}.png", id));
-         if !grid_path.try_exists().map_err(|_| CError::IOError)? {
+         let id: u64 = root_contents["appid"].parse().map_err(|_| Error::ParseError)?;
+         let mut grid_path = app_data_dir().join(format!("grids/{}.png", id));
+         if !grid_path.try_exists()? {
              let arc_stmdb = Arc::clone(&steam_client);
-             if let Err(e) = get_grid_for_id(id, client.clone(), arc_stmdb).await.map_err(|_| CError::NetError) {
-                 grid_path = app_data_dir().unwrap().join("grids/blank.png");
-             } else {
-                 
+             if let Err(_) = get_grid_for_id(id, client.clone(), arc_stmdb).await {
+                 grid_path = app_data_dir().join("grids/blank.png");
              }
          }
          
@@ -109,14 +137,21 @@ pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, CError> {
     Ok(game_entries)
 }
 
-async fn get_grid_for_id(id: u64, client: Client, steamclient: Arc<steamgriddb_api::Client>) -> Result<(), CError> {
+async fn get_grid_for_id(id: u64, client: Client, steamclient: Arc<steamgriddb_api::Client>) -> Result<(), Error> {
     println!("{}\n", id);    
-    let mut res = steamclient.get_images_for_platform_id(&Platform::Steam, &id.to_string(), &QueryType::Grid(Some(steamgriddb_api::query_parameters::GridQueryParameters {mimes: Some(&[MimeType::Png]), ..Default::default()}))).await.map_err(|e| {eprint!("{}", e); CError::NetError})?;
+    let mut res = steamclient.get_images_for_platform_id(
+        &Platform::Steam, 
+        &id.to_string(), 
+        &QueryType::Grid
+            (
+            Some(steamgriddb_api::query_parameters::GridQueryParameters {mimes: Some(&[MimeType::Png]), ..Default::default()})
+            ))
+    .await.map_err(|e| Error::GridDBError(e.to_string()))?;
     let chosen_img = res.remove(rand::random_range(0..res.len()));
-    let response = client.get(&chosen_img.url).send().await.map_err(|e| {eprint!("{}", e); CError::NetError})?.bytes().await.map_err(|_| CError::NetError)?;
-    let grid_path = app_data_dir().unwrap().join(format!("grids/{}.png", id));
-    let mut file = File::create_new(grid_path).await.map_err(|e| CError::IOError)?;
-    file.write_all(&response).await.map_err(|_| CError::IOError)?;
+    let response = client.get(&chosen_img.url).send().await?.bytes().await?;
+    let grid_path = app_data_dir().join(format!("grids/{}.png", id));
+    let mut file = File::create_new(grid_path).await?;
+    file.write_all(&response).await?;
     
     Ok(())
 }

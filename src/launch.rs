@@ -1,15 +1,8 @@
-#![allow(unused)]
-use std::collections::{BTreeMap};
-use std::fs::{create_dir_all};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use iced::widget::grid;
+use crate::{gather_runners::{RunnerEntry}, dirs::prefix_dir, gather_games::Error};
+use std::{collections::{BTreeMap}, fs::{create_dir_all}, path::{Path, PathBuf}, process::{Child, Command}};
 use serde::{Deserialize, Serialize};
-use std::io;
-use std::process::{Child, Command};
 use uuid::Uuid;
-use crate::gather_games::CError;
-use crate::{gather_runners::RunnerEntry, dirs::prefix_dir};
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum GameEntry {
@@ -119,9 +112,9 @@ impl GameEntry {
             GameEntry::Steam(..) => {return}
         }
     }
-    pub fn run_game(&self) -> Result<Child, CError> {
+    pub fn run_game(&self) -> Result<Child, Error> {
         self.make_prefix();
-        command_build(self).spawn().map_err(|_| CError::IOError)
+        command_build(self).spawn().map_err(|e| Error::IOError(e.to_string()))
     }
     pub fn get_name(&self) -> String {
         match &self {

@@ -1,13 +1,12 @@
 use std::path::PathBuf;
 use uuid::Uuid;
 
-pub fn app_data_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|e| e.join("maria"))
+pub fn app_data_dir() -> PathBuf {
+    dirs::data_dir().unwrap().join("maria")
 }
 
 pub fn prefix_dir(id: &Uuid) -> String {
-    let data_dir = app_data_dir().expect("");
-    data_dir.join(id.to_string()).join("prefix").to_string_lossy().into_owned()
+    app_data_dir().join(id.to_string()).join("prefix").to_string_lossy().into_owned()
 }
 
 pub fn app_config_dir() -> PathBuf {
@@ -15,23 +14,29 @@ pub fn app_config_dir() -> PathBuf {
 }
 
 #[cfg(target_os = "linux")]
-pub fn steam_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("Steam"))
+pub fn steam_dir() -> PathBuf {
+    dirs::data_local_dir().unwrap().join("Steam")
 }
 
 #[cfg(target_os = "windows")]
 pub fn steam_dir() -> Option<PathBuf> {
     let winpath = PathBuf::from("C:/Program Files (x86)/Steam");
-    if winpath.exists() {Some(winpath)} 
+    if winpath.exists() {return Some(winpath);} 
     else {None}
 }
 
 #[cfg(target_os = "linux")]
-pub fn heroic_dir() -> Option<PathBuf> {
-    dirs::config_local_dir().map(|dir| dir.join("heroic/tools/proton"))
+pub fn heroic_dir() -> PathBuf {
+    dirs::config_dir().unwrap().join("heroic/tools/proton")
 }
 
 #[cfg(target_os = "linux")]
-pub fn bottles_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("bottles/runners"))
+pub fn bottles_dir() -> PathBuf {
+    dirs::data_dir().unwrap().join("bottles/runners")
+}
+
+pub fn persistence_dirs_valid() -> bool {
+    if let None = dirs::data_dir() {eprintln!("Data dir doesn't exist/is not accessible ?"); return false}
+    if let None = dirs::config_dir() {eprintln!("Data dir doesn't exist/is not accessible ?"); return false}
+    true
 }

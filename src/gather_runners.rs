@@ -1,10 +1,10 @@
 #![allow(unused)]
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
-use crate::dirs::{steam_dir, bottles_dir, heroic_dir};
+use crate::{dirs::{bottles_dir, heroic_dir, steam_dir}, gather_games::Error};
 
 
-fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
     let dir_entries: Vec<DirEntry> = read_dir(protons_dir)?.filter_map(Result::ok).collect();
     let mut proton_versions = vec![];
     for dir in dir_entries {
@@ -29,9 +29,10 @@ fn valid_proton_dir(dir_contents: &Vec<DirEntry>) -> bool {
     }
 }
 
-pub fn fetch_runners() -> Vec<RunnerEntry> {
+pub fn fetch_runners() -> Result<Vec<RunnerEntry>, Error> {
     let mut runners: Vec<PathBuf> = vec![];
-    if let Some(steam_dir) = steam_dir() {
+    if steam_dir().try_exists()?{
+        let steam_dir = steam_dir();
         if let Ok(steam_proton) = scan_dir(&steam_dir.join("steamapps/common")) {
             runners.extend(steam_proton);
         }
@@ -39,22 +40,26 @@ pub fn fetch_runners() -> Vec<RunnerEntry> {
             runners.extend(compat_proton);
         }
     }
-    if let Some(hgl) = heroic_dir() {
+    if heroic_dir().try_exists()? {
+        let hgl = heroic_dir();
         if let Ok(steam_proton) = scan_dir(&hgl) {
             runners.extend(steam_proton);
         }
     }
-    if let Some(bottles) = bottles_dir() {
+    if bottles_dir().try_exists()? {
+        let bottles = bottles_dir();
         if let Ok(bottles_proton) = scan_dir(&bottles) {
             runners.extend(bottles_proton)
         }
     }
     let accumulated_runners = process_paths(runners);
-    dedup_runners(accumulated_runners)
+    Ok(dedup_runners(accumulated_runners))
 }
 
 fn process_paths(paths: Vec<PathBuf>) -> Vec<RunnerEntry> {
-    paths.into_iter().map(|raw_path| RunnerEntry::new(raw_path.file_name().unwrap().to_string_lossy(), &raw_path)).collect()
+    paths.into_iter().filter_map(|raw_path| {
+        raw_path.file_name().map(|name| RunnerEntry::new(name.to_string_lossy(), raw_path.clone()))
+    }).collect()
 }
 
 fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
