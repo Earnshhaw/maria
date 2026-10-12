@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 use iced::{Element, Length, Task, widget::{button, column, container, grid, image::Handle, mouse_area, opaque, pane_grid, pick_list, row, stack, text, text_input}};
 use iced_aw::{Menu, menu::{self, Item}};
-use iced_runtime::{core::{Widget, mouse}, task::into_stream};
-use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir, steam_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
+use rfd::MessageDialogResult::No;
+use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir, steam_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, gui::Message::GameEditOverlay, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -12,7 +12,7 @@ pub struct State {
     config: AppConfig,
     pane: pane_grid::State<Pane>,
     overlay: Overlay,
-    new_entry_setup: Option<LocalEntry>
+    game_master: Option<LocalEntry>
 }
 
 fn default_game_entry() -> LocalEntry {
@@ -28,7 +28,7 @@ fn default_game_entry() -> LocalEntry {
 #[derive(Debug, Clone)]
 enum Overlay {
     None,
-    AddGame
+    GameEdit
 }
 
 #[derive(Debug, Clone, Default)]
@@ -47,13 +47,19 @@ pub enum Message {
     LaunchGame(String),
     GameLaunched(Result<ExitStatus, Error>),
     PaneResized(pane_grid::ResizeEvent),
-    AddLocalGameModal,
-    NewGameSetGridRfd,
-    NewGameSetBinaryPath(SetMethod),
-    NewGameSetWorkingDir(SetMethod),
-    NewGameSetRunner(Runner),
-    NewGameSetLaunchArguments(String),
-    NewGameSetEnvVars(String),
+    GameEditOverlay(GameEditCommand),
+}
+
+#[derive(Debug, Clone)]
+enum GameEditCommand {
+    AddLocalGame,
+    EditLocalGame(GameEntry),
+    EditGameSetGridRfd,
+    EditGameSetBinaryPath(SetMethod),
+    EditGameSetWorkingDir(SetMethod),
+    EditGameSetRunner(Runner),
+    EditGameSetLaunchArguments(String),
+    EditGameSetEnvVars(String),
     ConfirmEntry,
     CancelEntry
 }
@@ -64,7 +70,7 @@ fn game_grid_view(state: &State) -> Element<'_,Message> {
             .iter()
             .map(|(entry, handle)| mouse_area(
                 button(iced::widget::image(handle).border_radius(10).content_fit(iced::ContentFit::Contain).height(Length::Fill))
-                    .on_press(Message::LaunchGame(entry.id_as_string())))
+                    .on_press(Message::LaunchGame(entry.id_as_string()))).on_right_press(Message::GameEditOverlay(GameEditCommand::EditLocalGame(entry.to_owned())))
             .into()))
     .height(grid::Sizing::AspectRatio(fdiv(2, 3))).fluid(200)
     .spacing(5);
@@ -73,16 +79,19 @@ fn game_grid_view(state: &State) -> Element<'_,Message> {
         .padding(10)
         .into()
 }
-
 fn sidebar_view(state: &State) -> Element<'_, Message> {
     let els = text!("SIDEBAR");
     container(els)
         .into()
 }
-
-
 fn topbar_view(state: &State) -> Element<'_, Message> {
-    let options = vec![Item::new(button("Add a local game").on_press(Message::AddLocalGameModal)).close_on_click(true), Item::new(button("Fetch steam library").on_press(Message::FetchSteamGames)).close_on_click(true)];
+    let options = vec![
+        Item::new(button("Add a local game")
+            .on_press(Message::GameEditOverlay(GameEditCommand::AddLocalGame)))
+            .close_on_click(true), 
+        Item::new(button("Fetch steam library")
+            .on_press(Message::FetchSteamGames))
+            .close_on_click(true)];
     let cx = iced_aw::menu_bar!((text("Add a game..."), Menu::new(options).width(Length::Fixed(125.0))));
     container(cx)
         .width(Length::Fill)
@@ -99,9 +108,9 @@ impl State {
             })
             .on_resize(10, Message::PaneResized);
         let x = column![topbar_view(self), grid];
-        match self.overlay {
+        match &self.overlay {
             Overlay::None => {x.into()},
-            Overlay::AddGame => {modal(x, new_game_modal(self)).into()}
+            Overlay::GameEdit => {modal(x, new_game_modal(self)).into()}
         }
     }
        
@@ -115,39 +124,62 @@ impl State {
             Message::LaunchGame(strid) => launch_game(self, strid),
             Message::GameLaunched(status) => game_terminated(self, status),
             Message::PaneResized(resize) => pane_resized(self, resize),
-            Message::AddLocalGameModal => add_local_game_menu(self),
-            Message::NewGameSetGridRfd => set_grid(self),
-            Message::NewGameSetBinaryPath(method) => set_binary_path(self, method),
-            Message::NewGameSetWorkingDir(method) => set_working_dir(self, method),
-            Message::NewGameSetLaunchArguments(args) => set_launch_args(self, args),
-            Message::NewGameSetRunner(runner) => set_runner(self, runner),
-            Message::NewGameSetEnvVars(envs) => set_env_vars(self, envs),
-            Message::CancelEntry => cancel_entry(self),
-            Message::ConfirmEntry => confirm_entry(self)
+            Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd)
         }
     }
     pub fn new(game_entries: Vec<(GameEntry, Handle)>, runners: Vec<Runner>, config: AppConfig) -> Self {
         let (mut panes, first) = pane_grid::State::new(Pane::SidebarView);
         let (_, split) = panes.split(pane_grid::Axis::Vertical, first, Pane::GameGrids).unwrap();
         panes.resize(split, 0.20);
-        State { game_entries, runners, running_game: None, config, pane: panes, overlay: Overlay::None, new_entry_setup: None}
+        State { game_entries, runners, running_game: None, config, pane: panes, overlay: Overlay::None, game_master: None}
     }
     fn temp_entry(&mut self) -> &mut LocalEntry {
-       self.new_entry_setup.as_mut().unwrap()
+       self.game_master.as_mut().unwrap()
     }
 }
 
-fn confirm_entry(state: &mut State) -> Task<Message> {
-    if let Some(s) = state.new_entry_setup.as_ref() {
-        let new_entry = (GameEntry::Local(s.to_owned()), Handle::from(s.get_grid()));
-        state.game_entries.push(new_entry);
-        return Task::done(Message::SyncGamesToDisk)
+fn game_edit_overlay_branch(state: &mut State, cmd: GameEditCommand) -> Task<Message> {
+    match cmd {
+        GameEditCommand::CancelEntry => cancel_entry(state),
+        GameEditCommand::ConfirmEntry => confirm_entry(state),
+        GameEditCommand::EditGameSetBinaryPath(method) => set_binary_path(state, method),
+        GameEditCommand::EditGameSetEnvVars(envs) => set_env_vars(state, envs),
+        GameEditCommand::EditGameSetGridRfd => set_grid(state),
+        GameEditCommand::EditGameSetLaunchArguments(args) => set_launch_args(state, args),
+        GameEditCommand::EditGameSetRunner(runner) => set_runner(state, runner),
+        GameEditCommand::EditGameSetWorkingDir(method) => set_working_dir(state, method),
+        GameEditCommand::AddLocalGame => add_local_game_menu(state),
+        GameEditCommand::EditLocalGame(game) => edit_local_game(state, game),
     }
-    Task::none()
+}
+fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
+    match game {
+        GameEntry::Local(game) => {
+            state.game_master = Some(game);
+            state.overlay = Overlay::GameEdit;
+            Task::none()
+        },
+        GameEntry::Steam(_) => {
+            Task::none()
+        }
+    }
+}
+fn confirm_entry(state: &mut State) -> Task<Message> {
+    if let Some(new) = state.game_master.as_ref() {
+        if let Some(old) = state.game_entries.iter_mut().find(|(entry, _)| {entry.id_as_string() == new.get_id().to_string()}) {
+            *old = (GameEntry::Local(new.to_owned()), Handle::from(new.get_grid()));
+        } else {
+            let new_entry = (GameEntry::Local(new.to_owned()), Handle::from(new.get_grid()));
+            state.game_entries.push(new_entry);
+        }
+    }
+    state.game_master = None;
+    state.overlay = Overlay::None;
+    Task::done(Message::SyncGamesToDisk)
 }
 fn cancel_entry(state: &mut State) -> Task<Message> {
     state.overlay = Overlay::None;
-    state.new_entry_setup = None;
+    state.game_master = None;
     Task::none()
 }
 fn set_env_vars(state: &mut State, envs: String) -> Task<Message> {
@@ -161,8 +193,8 @@ fn set_runner(state: &mut State, runner: Runner) -> Task<Message> {
     Task::none()
 }
 fn add_local_game_menu(state: &mut State) -> Task<Message> {
-    state.new_entry_setup = Some(default_game_entry());
-    state.overlay = Overlay::AddGame; 
+    state.game_master = Some(default_game_entry());
+    state.overlay = Overlay::GameEdit; 
     Task::none()
 }
 fn set_launch_args(state: &mut State, args: String) -> Task<Message> {
@@ -187,8 +219,8 @@ fn set_working_dir(state: &mut State, method: SetMethod) -> Task<Message> {
 fn set_grid(state: &mut State) -> Task<Message> {
     let rfd = rfd::FileDialog::new().add_filter("jpg", &["jpg", "jpeg", "jpg"]).pick_file();
     if let Some(img) = rfd {
-        let entry = state.new_entry_setup.as_mut().unwrap();
-        entry.grid_path = img.clone();
+        let entry = state.temp_entry();
+        entry.grid_path = img;
     }
     Task::none()
 }
@@ -198,7 +230,7 @@ fn set_binary_path(state: &mut State, method: SetMethod) -> Task<Message> {
                 let rfd = rfd::FileDialog::new().pick_file();
                 if let Some(file) = rfd {
                     state.temp_entry().binary_path = file.clone();
-                    return Task::done(Message::NewGameSetWorkingDir(SetMethod::TextInput(file.parent().unwrap().to_string_lossy().into_owned())));
+                    return Task::done(Message::GameEditOverlay(GameEditCommand::EditGameSetWorkingDir(SetMethod::TextInput(file.parent().unwrap().to_string_lossy().into_owned()))));
                 }
             },
             SetMethod::TextInput(inp) => {
@@ -311,7 +343,6 @@ fn fdiv(a: i32, b: i32) -> f32 {
     a as f32 / b as f32 //if you divide by 0 youre retarded, im not error handling this shit
 }
 fn modal<'a>(base: impl Into<Element<'a, Message>>, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    
     stack!(base.into(),
        opaque(
             content.into()
@@ -320,21 +351,21 @@ fn modal<'a>(base: impl Into<Element<'a, Message>>, content: impl Into<Element<'
     .into()
 }
 fn new_game_modal(state: &State) -> Element<'_, Message> {
-    let entry = state.new_entry_setup.as_ref().unwrap();
-    let poster = button(iced::widget::image(&entry.grid_path).height(100)).on_press(Message::NewGameSetGridRfd);
+    let entry = state.game_master.as_ref().unwrap();
+    let poster = button(iced::widget::image(&entry.grid_path).height(100)).on_press(Message::GameEditOverlay(GameEditCommand::EditGameSetGridRfd));
     let binary_path = 
-        row![text_input("Path to executable", &entry.get_binary_path().to_string_lossy()).on_input(|i| Message::NewGameSetBinaryPath(SetMethod::TextInput(i))),
-        button("rfd").on_press(Message::NewGameSetBinaryPath(SetMethod::Rfd))];
+        row![text_input("Path to executable", &entry.get_binary_path().to_string_lossy()).on_input(|i| Message::GameEditOverlay(GameEditCommand::EditGameSetBinaryPath(SetMethod::TextInput(i)))),
+            button("rfd").on_press(Message::GameEditOverlay(GameEditCommand::EditGameSetBinaryPath(SetMethod::Rfd)))];
     let working_dir = row![
-        text_input("Working directory", &entry.get_working_dir().to_string_lossy()).on_input(|i| Message::NewGameSetWorkingDir(SetMethod::TextInput(i))), 
-        button("rfd").on_press(Message::NewGameSetWorkingDir(SetMethod::Rfd))];
-    let runner = pick_list(state.runners.as_ref(), entry.runner.as_ref(), Message::NewGameSetRunner);
-    let launch_args = text_input("Launch arguments", &entry.get_launch_args().join(" ")).on_input(Message::NewGameSetLaunchArguments);
+        text_input("Working directory", &entry.get_working_dir().to_string_lossy()).on_input(|i| Message::GameEditOverlay(GameEditCommand::EditGameSetWorkingDir(SetMethod::TextInput(i)))), 
+        button("rfd").on_press(Message::GameEditOverlay(GameEditCommand::EditGameSetWorkingDir(SetMethod::Rfd)))];
+    let runner = pick_list(state.runners.as_ref(), entry.runner.as_ref(), |i |Message::GameEditOverlay(GameEditCommand::EditGameSetRunner(i)));
+    let launch_args = text_input("Launch arguments", &entry.get_launch_args().join(" ")).on_input(|i| Message::GameEditOverlay(GameEditCommand::EditGameSetLaunchArguments(i)));
     let envs = entry.get_env_vars().iter().map(|(key, value)| format!("{key}={value}")).fold(String::new(), |a, b| {format!("{a} {b}")});
-    let envs_variables = text_input("Enviroment variables", &envs).on_input(Message::NewGameSetEnvVars);
+    let envs_variables = text_input("Enviroment variables", &envs).on_input(|i| Message::GameEditOverlay(GameEditCommand::EditGameSetEnvVars(i)));
     let finalization = row![
-        button("Confirm").on_press(Message::ConfirmEntry),
-        button("Cancel").on_press(Message::CancelEntry)
+        button("Confirm").on_press(Message::GameEditOverlay(GameEditCommand::ConfirmEntry)),
+        button("Cancel").on_press(Message::GameEditOverlay(GameEditCommand::CancelEntry))
     ];
     container(column![poster, binary_path, working_dir, runner, launch_args, envs_variables, finalization]).into()
 }
