@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::{gather_runners::{RunnerEntry}, dirs::prefix_dir, gather_games::Error};
 use std::{collections::{BTreeMap}, fs::{create_dir_all}, path::{Path, PathBuf}, process::{Child, Command}};
 use serde::{Deserialize, Serialize};
@@ -25,14 +26,14 @@ pub struct SteamEntry {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct LocalEntry {
-    title: String, 
-    id: Uuid, 
-    grid_path: PathBuf,
-    binary_path: PathBuf, 
-    working_dir: PathBuf, 
-    env_vars: BTreeMap<String, String>, 
-    launch_args: Vec<String>, 
-    runner: Runner
+    pub title: String, 
+    pub id: Uuid, 
+    pub grid_path: PathBuf,
+    pub binary_path: PathBuf, 
+    pub working_dir: PathBuf, 
+    pub env_vars: BTreeMap<String, String>, 
+    pub launch_args: Vec<String>, 
+    pub runner: Option<Runner>
 }
 
 impl LocalEntry {
@@ -44,7 +45,7 @@ impl LocalEntry {
         working_dir: impl Into<PathBuf>, 
         env_vars: BTreeMap<String, String>, 
         launch_args: &[&str], 
-        runner: Runner) -> LocalEntry 
+        runner: Option<Runner>) -> LocalEntry 
     {
         LocalEntry { 
             title: title.into(), 
@@ -78,7 +79,10 @@ impl LocalEntry {
         &self.launch_args
     }
     pub fn get_runner(&self) -> &Runner {
-        &self.runner
+        match &self.runner {
+            Some(r) => &r,
+            None => &Runner::Native
+        }
     }
 }
 
@@ -103,7 +107,7 @@ impl GameEntry {
         match &self {
             GameEntry::Local(game) => {
                 match game.runner {
-                    Runner::Native => {return},
+                    None => {return},
                     _ => {
                         create_dir_all(prefix_dir(&game.id)).unwrap();
                     }
@@ -130,7 +134,7 @@ impl GameEntry {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, PartialOrd, )]
 pub enum Runner {
     Native,
     #[default]
@@ -138,12 +142,32 @@ pub enum Runner {
     Proton(ProtonVariant),
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+impl ToString for Runner {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Native => String::from("Native"),
+            Self::Wine => String::from("Wine"),
+            Self::Proton(pr_vr) => pr_vr.to_string()
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
 pub enum ProtonVariant {
     GEProton, //latest ge proton
     #[default]
     UMUProton, //umu-proton, latest stable valve proton + umu fixes
     Custom(RunnerEntry) //path to a local proton folder, must have proton file inside of it 
+}
+
+impl ToString for ProtonVariant {
+    fn to_string(&self) -> String {
+        match self {
+            Self::GEProton => String::from("GEProton"),
+            Self::UMUProton => String::from("UMUProton"),
+            Self::Custom(r_e) => String::from(r_e.name())
+        }
+    }
 }
 
 impl ProtonVariant {

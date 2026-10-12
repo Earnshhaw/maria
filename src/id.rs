@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::fs::read_dir;
 use uuid::Uuid;
 use crate::dirs::app_data_dir;

@@ -37,6 +37,8 @@ pub fn boot() -> State {
     }).collect();
     if cfg!(target_os = "linux") {
         runners.extend(vec![Runner::Native, Runner::Wine, Runner::Proton(ProtonVariant::GEProton), Runner::Proton(ProtonVariant::UMUProton)]);
+    } else {
+        runners = vec![Runner::Native]
     }
     
     State::new(game_entries, runners, config)
