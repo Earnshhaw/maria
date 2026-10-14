@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 use iced::{Element, Length, Task, widget::{button, column, container, grid, image::Handle, opaque, pane_grid, pick_list, row, stack, text, text_input}};
 use iced_aw::{ContextMenu, Menu, menu::Item};
-use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
+use crate::{error::Error, boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir}, gather_games::{fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -426,4 +426,22 @@ fn edit_game_modal(state: &State) -> Element<'_, Message> {
         button("Cancel").on_press(Message::GameEditOverlay(GameEdit::CancelEntry))
     ];
     container(column![poster, title, binary_path, working_dir, runner, launch_args, envs_variables, finalization]).into()
+}
+
+pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
+    let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
+    let entries = load_saved_games().unwrap();
+    for entry in entries {
+        let handle_path = match &entry {
+            GameEntry::Local(g) => {g.get_grid()},
+            GameEntry::Steam(g) => {g.get_grid()}
+            };
+        let handle = if !handle_path.exists() {
+            Handle::from_path(app_data_dir().join(format!("grids/{}", PLACEHOLDER_GRID)))
+            } else {
+            Handle::from_path(handle_path)
+            };
+            game_entries.push((entry, handle));
+            }
+    game_entries
 }

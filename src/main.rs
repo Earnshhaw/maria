@@ -1,6 +1,7 @@
 mod launch;
 mod boot;
 mod config;
+mod error;
 mod gather_games;
 mod gui;
 mod style;

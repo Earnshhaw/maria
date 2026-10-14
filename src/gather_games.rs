@@ -1,10 +1,9 @@
-use crate::{api_keys::steamgriddb_api_key, dirs::{app_data_dir, steam_dir}, launch::{GameEntry, SteamEntry}};
+use crate::{error::Error, api_keys::steamgriddb_api_key, dirs::{app_data_dir, steam_dir}, launch::{GameEntry, SteamEntry}};
 use std::{fs::{read_dir, read_to_string}, path::{PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
 use steamgriddb_api::{QueryType, query_parameters::{MimeType, Platform}};
 use tokio::{fs::{File, create_dir_all, write}, io::AsyncWriteExt};
-use thiserror::Error;
 
 const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
 
@@ -56,45 +55,6 @@ pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
 fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
     steam_dir.join("steamapps")
 }
-
-#[derive(Error, Debug, Clone)]
-pub enum Error {
-    #[error("Io error")]
-    IOError(String),
-    #[error("Parse error")]
-    ParseError,
-    #[error("Net error")]
-    NetError(String),
-    #[error("")]
-    SerdeError(String),
-    #[error("")]
-    GridDBError(String)
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Error::IOError(value.to_string())
-    }
-}
-
-impl From<toml::ser::Error> for Error {
-    fn from(value: toml::ser::Error) -> Self {
-        Error::SerdeError(value.to_string())
-    }
-}
-
-impl From<toml::de::Error> for Error {
-    fn from(value: toml::de::Error) -> Self {
-        Error::SerdeError(value.to_string())
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        Error::NetError(value.to_string())
-    }
-}
-
 
 pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
     if !steam_dir().try_exists()? {

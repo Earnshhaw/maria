@@ -1,7 +1,7 @@
 #![allow(unused)]
 use std::{fs::{File, create_dir_all, read_to_string, write}};
 use serde::{Deserialize, Serialize};
-use crate::{dirs::app_config_dir, gather_games::Error};
+use crate::{error::Error, dirs::app_config_dir};
 
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]

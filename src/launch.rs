@@ -1,4 +1,4 @@
-use crate::{gather_runners::{RunnerEntry}, dirs::prefix_dir, gather_games::Error};
+use crate::{error::Error, gather_runners::{RunnerEntry}, dirs::prefix_dir};
 use std::{collections::BTreeMap, fs::create_dir_all, path::{Path, PathBuf}, process::{Child, Command}};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -195,13 +195,10 @@ fn command_build(entry: &GameEntry) -> Command {
                         let mut cmd = Command::new(first);
                         cmd.args(&game_wrappers[1..]);
                     
-                        cmd.arg(game.get_binary_path())
-                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))]);
+                        cmd.arg(game.get_binary_path());
                         cmd
                     } else {
                         let mut cmd = Command::new(game.get_binary_path());
-                        cmd
-                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))]);
                         cmd
                     }
                 },
@@ -212,12 +209,14 @@ fn command_build(entry: &GameEntry) -> Command {
                 
                         cmd
                             .args(["wine", "start", "/unix"])
+                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))])
                             .arg(game.get_binary_path());
                         cmd
                     } else {
                         let mut cmd = Command::new("wine");
                         cmd
                             .args(["start", "/unix"])
+                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))])
                             .arg(game.get_binary_path());
                         cmd
                     }

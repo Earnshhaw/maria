@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
-use crate::{dirs::steam_dir, gather_games::Error};
+use crate::{dirs::steam_dir, error::Error};
 
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
