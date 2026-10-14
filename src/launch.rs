@@ -33,7 +33,7 @@ pub struct LocalEntry {
     pub working_dir: PathBuf, 
     pub env_vars: BTreeMap<String, String>, 
     pub launch_args: Vec<String>, 
-    pub runner: Option<Runner>
+    pub runner: Runner
 }
 
 impl LocalEntry {
@@ -45,7 +45,7 @@ impl LocalEntry {
         working_dir: impl Into<PathBuf>, 
         env_vars: BTreeMap<String, String>, 
         launch_args: &[&str], 
-        runner: Option<Runner>) -> LocalEntry 
+        runner: Runner) -> LocalEntry 
     {
         LocalEntry { 
             title: title.into(), 
@@ -79,10 +79,7 @@ impl LocalEntry {
         &self.launch_args
     }
     pub fn get_runner(&self) -> &Runner {
-        match &self.runner {
-            Some(r) => &r,
-            None => &Runner::Native
-        }
+        &self.runner
     }
 }
 
@@ -105,15 +102,13 @@ impl SteamEntry {
 impl GameEntry {
     fn make_prefix(&self) {
         match &self {
+            _ => {return}
             GameEntry::Local(game) => {
-                match game.runner {
-                    None => {return},
-                    _ => {
-                        create_dir_all(prefix_dir(&game.id)).unwrap();
-                    }
+                match game.get_runner() {
+                    Runner::Native => {return;}
+                    _ => {create_dir_all(prefix_dir(&game.id)).unwrap();}
                 }
             },
-            GameEntry::Steam(..) => {return}
         }
     }
     pub fn run_game(&self) -> Result<Child, Error> {
@@ -136,8 +131,8 @@ impl GameEntry {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, PartialOrd, )]
 pub enum Runner {
-    Native,
     #[default]
+    Native,
     Wine,
     Proton(ProtonVariant),
 }
