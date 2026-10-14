@@ -16,29 +16,30 @@ pub struct State {
 
 #[derive(Debug, Clone, Default)]
 struct GameDraft {
-    pub title: String, 
-    pub id: uuid::Uuid, 
-    pub grid_path: PathBuf,
-    pub binary_path: String, 
-    pub working_dir: String, 
-    pub env_vars: String, 
-    pub launch_args: String, 
-    pub runner: Option<Runner>
+    title: String, 
+    id: uuid::Uuid, 
+    grid_path: PathBuf,
+    binary_path: String, 
+    working_dir: String, 
+    env_vars: String, 
+    launch_args: String, 
+    runner: Option<Runner>
 }
 
 impl From<GameDraft> for LocalEntry {
     fn from(value: GameDraft) -> Self {
         let split_by_eq: Vec<(String, String)> = value.env_vars.split(" ").into_iter().filter_map(|e| {e.split_once("=")}).map(|(k, v)| {(k.to_string(), v.to_string())}).collect();
         let vars = split_by_eq.into_iter().fold(BTreeMap::new(), |mut acc, (k, v)| {acc.insert(k, v); acc});
-        LocalEntry { 
-            title: value.title, 
-            id: value.id, 
-            grid_path: value.grid_path, 
-            binary_path: PathBuf::from(value.binary_path), 
-            working_dir: PathBuf::from(value.working_dir), 
-            env_vars: vars, 
-            launch_args: value.launch_args.split(" ").map(|e| e.to_string()).collect(), 
-            runner: value.runner.unwrap_or_default() }
+        LocalEntry::new(
+            value.title, 
+            value.id, 
+            value.grid_path, 
+            PathBuf::from(value.binary_path), 
+            PathBuf::from(value.working_dir), 
+            Vec::new(),
+            vars, 
+            value.launch_args.split(" ").map(|e| e.to_string()).collect::<Vec<String>>(), 
+            value.runner.unwrap_or_default())
     }
 }
 
@@ -213,14 +214,14 @@ fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
     match game {
         GameEntry::Local(game) => {
             let game = GameDraft { 
-                title: game.title, 
-                id: game.id, 
-                grid_path: game.grid_path, 
-                binary_path: game.binary_path.to_string_lossy().into_owned(), 
-                working_dir: game.working_dir.to_string_lossy().into_owned(), 
-                env_vars: game.env_vars.iter().map(|(key, value)| format!("{key}={value}")).fold(String::new(), |a, b| {format!("{a} {b}")}), 
-                launch_args: game.launch_args.join(" "), 
-                runner: Some(game.runner) };
+                title: game.get_title().to_owned(), 
+                id: *game.get_id(), 
+                grid_path: game.get_grid().to_owned(), 
+                binary_path: game.get_binary_path().to_string_lossy().into_owned(), 
+                working_dir: game.get_working_dir().to_string_lossy().into_owned(), 
+                env_vars: game.get_env_vars().iter().map(|(key, value)| format!("{key}={value}")).fold(String::new(), |a, b| {format!("{a} {b}")}), 
+                launch_args: game.get_launch_args().join(" "), 
+                runner: Some(game.get_runner().to_owned()) };
             state.game_form = Some(game);
             state.overlay = Overlay::GameEdit;
             Task::none()

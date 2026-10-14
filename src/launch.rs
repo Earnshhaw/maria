@@ -1,6 +1,6 @@
 #![allow(unused)]
 use crate::{gather_runners::{RunnerEntry}, dirs::prefix_dir, gather_games::Error};
-use std::{collections::{BTreeMap}, fs::{create_dir_all}, path::{Path, PathBuf}, process::{Child, Command}};
+use std::{collections::BTreeMap, fs::create_dir_all, path::{Path, PathBuf}, process::{Child, Command}};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -26,14 +26,15 @@ pub struct SteamEntry {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct LocalEntry {
-    pub title: String, 
-    pub id: Uuid, 
-    pub grid_path: PathBuf,
-    pub binary_path: PathBuf, 
-    pub working_dir: PathBuf, 
-    pub env_vars: BTreeMap<String, String>, 
-    pub launch_args: Vec<String>, 
-    pub runner: Runner
+    title: String, 
+    id: Uuid, 
+    grid_path: PathBuf,
+    binary_path: PathBuf, 
+    working_dir: PathBuf,
+    wrappers: Vec<String>,
+    env_vars: BTreeMap<String, String>, 
+    launch_args: Vec<String>, 
+    runner: Runner
 }
 
 impl LocalEntry {
@@ -43,8 +44,9 @@ impl LocalEntry {
         grid_path: impl Into<PathBuf>,
         binary_path: impl Into<PathBuf>, 
         working_dir: impl Into<PathBuf>, 
+        wrappers: Vec<String>,
         env_vars: BTreeMap<String, String>, 
-        launch_args: &[&str], 
+        launch_args: Vec<String>, 
         runner: Runner) -> LocalEntry 
     {
         LocalEntry { 
@@ -53,8 +55,9 @@ impl LocalEntry {
             id: id.into(), 
             binary_path: binary_path.into(), 
             working_dir: working_dir.into(), 
+            wrappers: wrappers,
             env_vars: env_vars, 
-            launch_args: launch_args.into_iter().map(|e| e.to_string()).collect(), 
+            launch_args: launch_args, 
             runner: runner }
     }
     pub fn get_title(&self) -> &str {
@@ -80,6 +83,9 @@ impl LocalEntry {
     }
     pub fn get_runner(&self) -> &Runner {
         &self.runner
+    }
+    pub fn get_wrappers(&self) -> &Vec<String> {
+        &self.wrappers
     }
 }
 
@@ -166,7 +172,7 @@ impl ToString for ProtonVariant {
 }
 
 impl ProtonVariant {
-    pub fn get_string(&self) -> String {
+    fn get_string(&self) -> String {
         match self {
             Self::GEProton => String::from("GE-Proton"),
             Self::UMUProton => String::from("UMU-Proton"),
@@ -188,6 +194,7 @@ fn command_build(entry: &GameEntry) -> Command {
                     let mut cmd = Command::new(game.get_binary_path());
                     cmd
                         .args(game.get_launch_args())
+                        
                         .envs(game.get_env_vars())
                         .current_dir(game.get_working_dir());
                     cmd
