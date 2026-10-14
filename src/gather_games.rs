@@ -1,4 +1,4 @@
-use crate::{api_keys::steamgriddb_api_key, launch::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}};
+use crate::{api_keys::steamgriddb_api_key, dirs::{app_data_dir, steam_dir}, launch::{GameEntry, SteamEntry}};
 use std::{fs::{read_dir, read_to_string}, path::{PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;

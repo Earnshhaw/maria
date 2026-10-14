@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 use iced::{Element, Length, Task, widget::{button, column, container, grid, image::Handle, opaque, pane_grid, pick_list, row, stack, text, text_input}};
 use iced_aw::{ContextMenu, Menu, menu::Item};
-use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir, steam_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
+use crate::{boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir}, gather_games::{Error, fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -111,7 +111,7 @@ fn game_grid_view(state: &State) -> Element<'_,Message> {
                             .border_radius(10)
                             .content_fit(iced::ContentFit::Contain)
                             .height(Length::Fill))
-                            .on_press(Message::LaunchGame(entry.id_as_string())) //UNDERLAY
+                            .on_press(Message::LaunchGame(entry.get_id())) //UNDERLAY
                     }, 
                     || {                                                         //OVERLAY
                         let button_m = match entry {
@@ -233,7 +233,7 @@ fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
 }
 fn confirm_entry(state: &mut State) -> Task<Message> {
     if let Some(new) = state.game_form.as_ref() {
-        if let Some(old) = state.game_entries.iter_mut().find(|(entry, _)| {entry.id_as_string() == new.id.to_string()}) {
+        if let Some(old) = state.game_entries.iter_mut().find(|(entry, _)| {entry.get_id() == new.id.to_string()}) {
             *old = (GameEntry::Local(new.to_owned().into()), Handle::from(&new.grid_path));
         } else {
             let new_entry = (GameEntry::Local(new.to_owned().into()), Handle::from(&new.grid_path));
@@ -321,7 +321,7 @@ fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     if state.running_game.is_some() {
         return Task::none();
     }
-    let running_game = state.game_entries.iter().find(|(entry, _)| entry.id_as_string() == strid);
+    let running_game = state.game_entries.iter().find(|(entry, _)| entry.get_id() == strid);
     if let Some((game, _)) = running_game.cloned() {
         state.running_game = Some(game.clone());
         iced_runtime::task::blocking(move |mut sender| {
@@ -370,9 +370,6 @@ fn sync_games(state: &mut State) -> Task<Message> {
     }, Message::Synced)
 }
 fn fetch_steam_games_cmd() -> Task<Message> {
-    if !steam_dir().exists() {
-        return Task::none()
-    }
     Task::perform(async move {
         fetch_steam_games().await
     }, Message::SteamGamesFetched)

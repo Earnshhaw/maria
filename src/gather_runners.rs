@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
-use crate::{dirs::{bottles_dir, heroic_dir, steam_dir}, gather_games::Error};
+use crate::{dirs::steam_dir, gather_games::Error};
 
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
@@ -89,4 +89,14 @@ impl RunnerEntry {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+#[cfg(target_os = "linux")]
+pub fn heroic_dir() -> PathBuf {
+    dirs::config_dir().unwrap().join("heroic/tools/proton")
+}
+
+#[cfg(target_os = "linux")]
+pub fn bottles_dir() -> PathBuf {
+    dirs::data_dir().unwrap().join("bottles/runners")
 }

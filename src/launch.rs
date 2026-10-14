@@ -1,4 +1,3 @@
-#![allow(unused)]
 use crate::{gather_runners::{RunnerEntry}, dirs::prefix_dir, gather_games::Error};
 use std::{collections::BTreeMap, fs::create_dir_all, path::{Path, PathBuf}, process::{Child, Command}};
 use serde::{Deserialize, Serialize};
@@ -108,26 +107,26 @@ impl SteamEntry {
 impl GameEntry {
     fn make_prefix(&self) {
         match &self {
-            _ => {return}
             GameEntry::Local(game) => {
                 match game.get_runner() {
                     Runner::Native => {return;}
                     _ => {create_dir_all(prefix_dir(&game.id)).unwrap();}
                 }
             },
+            GameEntry::Steam(_) => {return;}
         }
     }
     pub fn run_game(&self) -> Result<Child, Error> {
         self.make_prefix();
         command_build(self).spawn().map_err(|e| Error::IOError(e.to_string()))
     }
-    pub fn get_name(&self) -> String {
+    pub fn get_title(&self) -> String {
         match &self {
             GameEntry::Local(f) => f.get_title().to_owned(),
             GameEntry::Steam(f) => f.get_title().to_owned()
         }
     }
-    pub fn id_as_string(&self) -> String {
+    pub fn get_id(&self) -> String {
         match &self {
             GameEntry::Local(s) => {s.get_id().to_string()},
             GameEntry::Steam(s) => {s.get_appid().to_string()}
@@ -189,39 +188,66 @@ fn command_build(entry: &GameEntry) -> Command {
             cmd
         }
         GameEntry::Local(game) => {
-            match game.get_runner() {
+            let game_wrappers = game.get_wrappers();
+            let mut cmd = match game.get_runner() {
                 Runner::Native => {
-                    let mut cmd = Command::new(game.get_binary_path());
-                    cmd
-                        .args(game.get_launch_args())
-                        
-                        .envs(game.get_env_vars())
-                        .current_dir(game.get_working_dir());
-                    cmd
+                    if let Some(first) = game_wrappers.first() {
+                        let mut cmd = Command::new(first);
+                        cmd.args(&game_wrappers[1..]);
+                    
+                        cmd.arg(game.get_binary_path())
+                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))]);
+                        cmd
+                    } else {
+                        let mut cmd = Command::new(game.get_binary_path());
+                        cmd
+                            .envs([("WINEPREFIX", prefix_dir(game.get_id()))]);
+                        cmd
+                    }
                 },
                 Runner::Wine => {
-                    let mut cmd = Command::new("wine");
-                    cmd
-                        .current_dir(game.get_working_dir())
-                        .env("WINEPREFIX", prefix_dir(game.get_id()))
-                        .args(["start", "/unix"])
-                        .arg(game.get_binary_path())
-                        .envs(game.get_env_vars())
-                        .args(game.get_launch_args());
-                    cmd
-                },
+                    if let Some(first) = game_wrappers.first() {
+                        let mut cmd = Command::new(first);
+                        cmd.args(&game_wrappers[1..]);
+                
+                        cmd
+                            .args(["wine", "start", "/unix"])
+                            .arg(game.get_binary_path());
+                        cmd
+                    } else {
+                        let mut cmd = Command::new("wine");
+                        cmd
+                            .args(["start", "/unix"])
+                            .arg(game.get_binary_path());
+                        cmd
+                    }
+                }
                 Runner::Proton(variant) => {
-                    let mut cmd = Command::new("umu-run");
-                    cmd
-                        .current_dir(game.get_working_dir()) //questionable ?
-                        .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id()))])
-                        .arg(game.get_binary_path())
-                        .envs(game.get_env_vars())
-                        .args(game.get_launch_args());
-                    cmd
+                    if let Some(first) = game_wrappers.first() {
+                        let mut cmd = Command::new(first);
+                            cmd.args(&game_wrappers[1..]);
+                        cmd
+                            .arg("umu-run")
+                            .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id()))])
+                            .arg(game.get_binary_path());
+                        cmd        
+                    } else {
+                        let mut cmd = Command::new("umu-run");
+                        cmd
+                            .envs([("PROTONPATH", variant.get_string()), ("WINEPREFIX", prefix_dir(game.get_id()))])
+                            .arg(game.get_binary_path());
+                        cmd
+                    }
+                    
                 }   
-            }
+            };
+            cmd
+                .args(game.get_launch_args())
+                .envs(game.get_env_vars())
+                .current_dir(game.get_working_dir());
+            cmd
         },
+        
     }
 }
 

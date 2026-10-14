@@ -25,16 +25,6 @@ pub fn steam_dir() -> PathBuf {
     else {None}
 }
 
-#[cfg(target_os = "linux")]
-pub fn heroic_dir() -> PathBuf {
-    dirs::config_dir().unwrap().join("heroic/tools/proton")
-}
-
-#[cfg(target_os = "linux")]
-pub fn bottles_dir() -> PathBuf {
-    dirs::data_dir().unwrap().join("bottles/runners")
-}
-
 pub fn persistence_dirs_valid() -> bool {
     if let None = dirs::data_dir() {eprintln!("Data dir doesn't exist/is not accessible ?"); return false}
     if let None = dirs::config_dir() {eprintln!("Data dir doesn't exist/is not accessible ?"); return false}
