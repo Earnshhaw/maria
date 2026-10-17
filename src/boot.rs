@@ -1,6 +1,4 @@
-use crate::{config::read_config, dirs::{persistence_dirs_valid}, gather_runners::fetch_runners, gui::{State, process_loaded_games}, launch::{ProtonVariant, Runner}};
-
-pub const PLACEHOLDER_GRID: &str = "blank.png";
+use crate::{config::read_config, dirs::{persistence_dirs_valid}, gather_runners::fetch_runners, gui::{State, process_loaded_games}, data_model::{ProtonVariant, Runner}};
 
 pub fn boot() -> State {
     if !persistence_dirs_valid() {

@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 use iced::{Element, Length, Task, widget::{button, column, container, grid, image::Handle, opaque, pane_grid, pick_list, row, stack, text, text_input}};
 use iced_aw::{ContextMenu, Menu, menu::Item};
-use crate::{error::Error, boot::PLACEHOLDER_GRID, config::AppConfig, dirs::{app_data_dir}, gather_games::{fetch_steam_games, load_saved_games, save_to_disk}, id::ensure_unique_id, launch::{GameEntry, LocalEntry, Runner, SteamEntry}};
+use crate::{config::AppConfig, data_model::{GameEntry, LocalEntry, Runner, SteamEntry}, dirs::app_data_dir, disk_sync::save_to_disk, error::Error, gather_games::{fetch_steam_games, load_saved_games}, id::ensure_unique_id, launch::run_game, misc::PLACEHOLDER_GRID};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -28,7 +28,7 @@ struct GameDraft {
 
 impl From<GameDraft> for LocalEntry {
     fn from(value: GameDraft) -> Self {
-        let split_by_eq: Vec<(String, String)> = value.env_vars.split(" ").into_iter().filter_map(|e| {e.split_once("=")}).map(|(k, v)| {(k.to_string(), v.to_string())}).collect();
+        let split_by_eq: Vec<(String, String)> = value.env_vars.split_whitespace().into_iter().filter_map(|e| {e.split_once("=")}).map(|(k, v)| {(k.to_string(), v.to_string())}).collect();
         let vars = split_by_eq.into_iter().fold(BTreeMap::new(), |mut acc, (k, v)| {acc.insert(k, v); acc});
         LocalEntry::new(
             value.title, 
@@ -152,7 +152,7 @@ fn topbar_view(state: &State) -> Element<'_, Message> {
 
 impl State {
     pub fn view(&self) -> Element<'_, Message> {
-        let grid = pane_grid(&self.pane, |pane, state, is_maximized| {
+        let grid = pane_grid(&self.pane, |_, state, _| {
                 pane_grid::Content::new(match state {
                     Pane::GameGrids => game_grid_view(self),
                     Pane::SidebarView => sidebar_view(self),
@@ -188,6 +188,9 @@ impl State {
     fn temp_entry(&mut self) -> &mut GameDraft {
        self.game_form.as_mut().unwrap()
     }
+    fn get_game_by_id(&self, strid: String) -> Option<GameEntry> {
+        self.game_entries.iter().find(|(entry, _)| entry.get_id() == strid).map(|(entry, _)| entry.clone())
+    }
 }
 
 fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Message> {
@@ -206,10 +209,11 @@ fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Message> {
     }
 }
 
+
 fn edit_title(state: &mut State, title: String) -> Task<Message> {
     state.temp_entry().title = title;
     Task::none()
-}
+}                       //GAMEDRAFT EDIT OPERATIONS
 fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
     match game {
         GameEntry::Local(game) => {
@@ -302,11 +306,13 @@ fn set_binary_path(state: &mut State, method: SetMethod) -> Task<Message> {
             }
         }
     Task::none()
-}
+}              //GAMEDRAFT EDIT OPERATIONS
+
 fn pane_resized(state: &mut State, resize_event: pane_grid::ResizeEvent) -> Task<Message> {
     state.pane.resize(resize_event.split, resize_event.ratio);
     Task::none()
 }
+
 fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> Task<Message> {
     state.running_game.take();
     match status {
@@ -316,22 +322,22 @@ fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> Task
         Err(e) => {eprintln!("{}", e)}
     }
     Task::none()
-}
+}   //GAME PROCESS RUN&TRACK CHAIN
 fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     if state.running_game.is_some() {
         return Task::none();
     }
-    let running_game = state.game_entries.iter().find(|(entry, _)| entry.get_id() == strid);
-    if let Some((game, _)) = running_game.cloned() {
+    if let Some(game) = state.get_game_by_id(strid) {
         state.running_game = Some(game.clone());
         iced_runtime::task::blocking(move |mut sender| {
-            let child = game.run_game().unwrap().wait().map_err(|e| Error::IOError(e.to_string()));
+            let child = run_game(&game).unwrap().wait().map_err(|e| Error::IOError(e.to_string()));
             let _ = sender.try_send(child);
         }).map(Message::GameLaunched)
     } else {
         Task::none()
     }
-}
+}                           //GAME PROCESS RUN&TRACK CHAIN
+
 fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
     match status {
         Ok(_) => {},
@@ -362,18 +368,19 @@ fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
     }
     state.game_entries = game_entries;
     Task::none()
-}
+}    //DISK SYNC CHAIN
 fn sync_games(state: &mut State) -> Task<Message> {
-    let c = state.game_entries.iter().map(|(entry, _)| entry.clone()).collect();
+    let game_library = state.game_entries.iter().map(|(entry, _)| entry.clone()).collect();
     Task::perform(async move {
-        save_to_disk(c).await
+        save_to_disk(game_library).await
     }, Message::Synced)
-}
+}                           //DISK SYNC CHAIN
+
 fn fetch_steam_games_cmd() -> Task<Message> {
     Task::perform(async move {
         fetch_steam_games().await
     }, Message::SteamGamesFetched)
-}
+}                                                        //STEAM GAMES CHAIN
 fn steam_games_fetched(state: &mut State, result: Result<Vec<SteamEntry>, Error>) -> Task<Message> {
         match result {
             Ok(entries) => {
@@ -399,7 +406,8 @@ fn steam_games_fetched(state: &mut State, result: Result<Vec<SteamEntry>, Error>
                 Task::none()
             },
         }
-}
+} //STEAM GAMES CHAIN
+
 fn modal<'a>(base: impl Into<Element<'a, Message>>, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     stack!(base.into(),
        opaque(

@@ -1,35 +1,9 @@
-use crate::{error::Error, api_keys::steamgriddb_api_key, dirs::{app_data_dir, steam_dir}, launch::{GameEntry, SteamEntry}};
+use crate::{api_keys::steamgriddb_api_key, data_model::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}, error::Error, misc::GAME_CFG_ENTRY_NAME};
 use std::{fs::{read_dir, read_to_string}, path::{PathBuf}, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
 use steamgriddb_api::{QueryType, query_parameters::{MimeType, Platform}};
-use tokio::{fs::{File, create_dir_all, write}, io::AsyncWriteExt};
-
-const GAME_CFG_ENTRY_NAME: &str = "entry.toml";
-
-pub async fn save_to_disk(gameentries: Vec<GameEntry>) -> Result<(), Error> {
-    for gameentry in gameentries {
-        match &gameentry {
-            GameEntry::Local(game) => {
-                let validated = game_dir_exists(game.get_id()).await?.join(GAME_CFG_ENTRY_NAME);
-                let formatted = toml::to_string_pretty(&gameentry)?;
-                write(validated, formatted).await?;},
-            GameEntry::Steam(game) => {
-                let validated = game_dir_exists(game.get_appid()).await?.join(GAME_CFG_ENTRY_NAME);
-                let formatted = toml::to_string_pretty(&gameentry)?;
-                write(validated, formatted).await?;}
-        }}
-    Ok(())
-}
-
-
-async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Error> {
-    let game_dir = app_data_dir().join(&uuid.to_string());
-    if !game_dir.try_exists()? {
-        create_dir_all(&game_dir).await?;
-    }
-    Ok(game_dir)
-}
+use tokio::{fs::{File}, io::AsyncWriteExt};
 
 pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
     let app_data_dir = app_data_dir();

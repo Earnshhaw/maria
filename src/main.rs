@@ -1,11 +1,14 @@
 mod launch;
 mod boot;
+mod disk_sync;
 mod config;
+mod data_model;
 mod error;
 mod gather_games;
 mod gui;
 mod style;
 mod api_keys;
+mod misc;
 mod id;
 mod dirs;
 mod gather_runners;
