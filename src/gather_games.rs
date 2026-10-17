@@ -1,5 +1,5 @@
 use crate::{api_keys::steamgriddb_api_key, data_model::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}, error::Error, misc::GAME_CFG_ENTRY_NAME};
-use std::{fs::{read_dir, read_to_string}, path::{PathBuf}, sync::Arc};
+use std::{fs::{create_dir_all, read_dir, read_to_string}, path::PathBuf, sync::Arc};
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
 use steamgriddb_api::{QueryType, query_parameters::{MimeType, Platform}};
@@ -7,6 +7,11 @@ use tokio::{fs::{File}, io::AsyncWriteExt};
 
 pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
     let app_data_dir = app_data_dir();
+
+    if !app_data_dir.try_exists()? {
+        create_dir_all(&app_data_dir)?;
+    }
+    
     let game_folders: Vec<PathBuf> = read_dir(&app_data_dir)?
         .filter_map(Result::ok)
         .filter_map(|e| {if e.path().is_dir() {Some(e.path())} else {None}}).collect();
@@ -32,7 +37,7 @@ fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
 
 pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
     if !steam_dir().try_exists()? {
-        return Err(Error::IOError("".to_string())); //maybe redundant ?
+        return Err(Error::IOError("Weird error".to_string())); //maybe redundant ?
     }
     
     let steam_client = Arc::new(steamgriddb_api::Client::new(steamgriddb_api_key()));
@@ -56,15 +61,19 @@ pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
              None => continue
          };
          let id: u64 = root_contents["appid"].parse().map_err(|_| Error::ParseError)?;
-         let mut grid_path = app_data_dir().join(format!("grids/{}.png", id));
+         let grid_path = app_data_dir().join("grids");
          if !grid_path.try_exists()? {
+            create_dir_all(&grid_path)?;
+         }
+         let mut grid_entry_path = grid_path.join(format!("{}.png", id));
+         if !grid_entry_path.try_exists()? {
              let arc_stmdb = Arc::clone(&steam_client);
              if let Err(_) = get_grid_for_id(id, client.clone(), arc_stmdb).await {
-                 grid_path = app_data_dir().join("grids/blank.png");
+                 grid_entry_path = app_data_dir().join("grids/blank.png");
              }
          }
          
-         let game_entry = SteamEntry::new(id, title, grid_path);
+         let game_entry = SteamEntry::new(id, title, grid_entry_path);
          game_entries.push(game_entry);
     }
     

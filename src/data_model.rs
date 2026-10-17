@@ -11,7 +11,7 @@ pub enum GameEntry {
 }
 
 impl GameEntry {
-    pub fn _get_title(&self) -> String {
+    pub fn get_title(&self) -> String {
             match &self {
                 GameEntry::Local(f) => f.get_title().to_owned(),
                 GameEntry::Steam(f) => f.get_title().to_owned()
@@ -22,6 +22,12 @@ impl GameEntry {
                 GameEntry::Local(s) => {s.get_id().to_string()},
                 GameEntry::Steam(s) => {s.get_appid().to_string()}
             }
+    }
+    pub fn get_grid(&self) -> PathBuf {
+        match self {
+            GameEntry::Local(g) => g.get_grid().to_owned(),
+            GameEntry::Steam(g) => g.get_grid().to_owned()
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::{fs::{File, create_dir_all, read_to_string, write}};
+use std::{fs::{File, create_dir_all, read_to_string, write}, io::Write};
 use serde::{Deserialize, Serialize};
 use crate::{error::Error, dirs::app_config_dir};
 
@@ -11,8 +11,10 @@ pub struct AppConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
-pub struct Display {
-    pub mode: String
+pub enum Display {
+    #[default]
+    GridView,
+    DetailsView
 }
 
 pub fn read_config() -> Result<AppConfig, Error> {
@@ -22,7 +24,9 @@ pub fn read_config() -> Result<AppConfig, Error> {
     }
     let c_file = c_dir.join("config.toml");
     if !c_file.try_exists()? {
-        File::create_new(c_file)?;
+        let mut new_cfg = File::create_new(c_file)?;
+        let content = toml::to_string_pretty(&AppConfig::default())?;
+        new_cfg.write_all(&content.into_bytes());
         return Ok(AppConfig::default());
     }
     let contents = read_to_string(&c_file)?;

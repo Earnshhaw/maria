@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 use iced::{Element, Length, Task, widget::{button, column, container, grid, image::Handle, opaque, pane_grid, pick_list, row, stack, text, text_input}};
 use iced_aw::{ContextMenu, Menu, menu::Item};
-use crate::{config::AppConfig, data_model::{GameEntry, LocalEntry, Runner, SteamEntry}, dirs::app_data_dir, disk_sync::save_to_disk, error::Error, gather_games::{fetch_steam_games, load_saved_games}, id::ensure_unique_id, launch::run_game, misc::PLACEHOLDER_GRID};
+use crate::{config::AppConfig, data_model::{GameEntry, LocalEntry, Runner, SteamEntry}, dirs::app_data_dir, disk_sync::{delete_from_disk, save_to_disk}, error::Error, gather_games::{fetch_steam_games, load_saved_games}, id::ensure_unique_id, launch::run_game, misc::PLACEHOLDER_GRID};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -21,24 +21,24 @@ struct GameDraft {
     grid_path: PathBuf,
     binary_path: String, 
     working_dir: String, 
-    env_vars: String, 
+    env_vars: Vec<(String, String)>, 
+    wrappers: String,
     launch_args: String, 
     runner: Option<Runner>
 }
 
 impl From<GameDraft> for LocalEntry {
     fn from(value: GameDraft) -> Self {
-        let split_by_eq: Vec<(String, String)> = value.env_vars.split_whitespace().into_iter().filter_map(|e| {e.split_once("=")}).map(|(k, v)| {(k.to_string(), v.to_string())}).collect();
-        let vars = split_by_eq.into_iter().fold(BTreeMap::new(), |mut acc, (k, v)| {acc.insert(k, v); acc});
+        let vars = value.env_vars.into_iter().fold(BTreeMap::new(), |mut acc, (k, v)| {acc.insert(k, v); acc});
         LocalEntry::new(
             value.title, 
             value.id, 
             value.grid_path, 
             PathBuf::from(value.binary_path), 
             PathBuf::from(value.working_dir), 
-            Vec::new(),
+            value.wrappers.split_whitespace().map(|e| e.to_string()).collect(),
             vars, 
-            value.launch_args.split(" ").map(|e| e.to_string()).collect::<Vec<String>>(), 
+            value.launch_args.split_whitespace().map(|e| e.to_string()).collect::<Vec<String>>(), 
             value.runner.unwrap_or_default())
     }
 }
@@ -76,6 +76,8 @@ pub enum Message {
     GameLaunched(Result<ExitStatus, Error>),
     PaneResized(pane_grid::ResizeEvent),
     GameEditOverlay(GameEdit),
+    DeleteEntry(String),
+    EntryDeleted(Result<(), Error>)
 }
 
 #[derive(Debug, Clone)]
@@ -88,9 +90,18 @@ pub enum GameEdit{
     SetWorkingDir(SetMethod),
     SetRunner(Runner),
     SetLaunchArguments(String),
-    SetEnvVars(String),
+    SetEnvVars(String, KeyValue),
+    AddEnvField,
+    RemoveEnvField(usize),
+    SetWrapper(String),
     ConfirmEntry,
     CancelEntry
+}
+
+#[derive(Debug, Clone)]
+pub enum KeyValue {
+    Key(usize),
+    Value(usize)
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +129,7 @@ fn game_grid_view(state: &State) -> Element<'_,Message> {
                             GameEntry::Local(_) => {column![button("Edit").on_press(Message::GameEditOverlay(GameEdit::EditLocalGame(entry.clone())))]},
                             GameEntry::Steam(_) => {column![]}
                         };
-                        let cx = button_m.push(button("Delete"));
+                        let cx = button_m.push(button("Delete").on_press(Message::DeleteEntry(entry.get_id())));
                         cx.into()
                     }                                                            //OVERLAY
                 ).into()
@@ -176,7 +187,9 @@ impl State {
             Message::LaunchGame(strid) => launch_game(self, strid),
             Message::GameLaunched(status) => game_terminated(self, status),
             Message::PaneResized(resize) => pane_resized(self, resize),
-            Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd)
+            Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
+            Message::DeleteEntry(id) => delete_game(self, id),
+            Message::EntryDeleted(result) => game_deleted(self, result),
         }
     }
     pub fn new(game_entries: Vec<(GameEntry, Handle)>, runners: Vec<Runner>, config: AppConfig) -> Self {
@@ -198,18 +211,24 @@ fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Message> {
         GameEdit::CancelEntry => cancel_entry(state),
         GameEdit::ConfirmEntry => confirm_entry(state),
         GameEdit::SetBinary(method) => set_binary_path(state, method),
-        GameEdit::SetEnvVars(envs) => set_env_vars(state, envs),
+        GameEdit::SetEnvVars(payload, kv) => set_env_vars(state, payload, kv),
         GameEdit::SetGridRfd => set_grid(state),
         GameEdit::SetLaunchArguments(args) => set_launch_args(state, args),
         GameEdit::SetRunner(runner) => set_runner(state, runner),
         GameEdit::SetWorkingDir(method) => set_working_dir(state, method),
         GameEdit::AddLocalGame => add_local_game_menu(state),
         GameEdit::EditLocalGame(game) => edit_local_game(state, game),
-        GameEdit::SetTitle(title) => edit_title(state, title)
+        GameEdit::SetTitle(title) => edit_title(state, title),
+        GameEdit::AddEnvField => add_env_field(state),
+        GameEdit::RemoveEnvField(i) => remove_env_field(state, i),
+        GameEdit::SetWrapper(wrappers) => edit_wrappers(state, wrappers)
     }
 }
 
-
+fn remove_env_field(state: &mut State, i:usize) -> Task<Message> {
+    state.temp_entry().env_vars.remove(i);
+    Task::none()
+}
 fn edit_title(state: &mut State, title: String) -> Task<Message> {
     state.temp_entry().title = title;
     Task::none()
@@ -223,7 +242,8 @@ fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
                 grid_path: game.get_grid().to_owned(), 
                 binary_path: game.get_binary_path().to_string_lossy().into_owned(), 
                 working_dir: game.get_working_dir().to_string_lossy().into_owned(), 
-                env_vars: game.get_env_vars().iter().map(|(key, value)| format!("{key}={value}")).fold(String::new(), |a, b| {format!("{a} {b}")}), 
+                wrappers: game.get_wrappers().join(" "),
+                env_vars: game.get_env_vars().iter().map(|(k,v)| {(k.clone(), v.to_string())}).collect(), 
                 launch_args: game.get_launch_args().join(" "), 
                 runner: Some(game.get_runner().to_owned()) };
             state.game_form = Some(game);
@@ -234,6 +254,10 @@ fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
             Task::none()
         }
     }
+}
+fn edit_wrappers(state: &mut State, payload: String) -> Task<Message> {
+    state.temp_entry().wrappers = payload;
+    Task::none()
 }
 fn confirm_entry(state: &mut State) -> Task<Message> {
     if let Some(new) = state.game_form.as_ref() {
@@ -253,8 +277,24 @@ fn cancel_entry(state: &mut State) -> Task<Message> {
     state.game_form = None;
     Task::none()
 }
-fn set_env_vars(state: &mut State, envs: String) -> Task<Message> {
-    state.temp_entry().env_vars = envs;
+fn add_env_field(state: &mut State) -> Task<Message> {
+    state.temp_entry().env_vars.push((String::new(), String::new()));
+    Task::none()
+}
+fn set_env_vars(state: &mut State, payload: String, kv: KeyValue) -> Task<Message> {
+    let envs = &mut state.temp_entry().env_vars;
+    match kv {
+        KeyValue::Key(i) => {
+            if let Some((k, _)) = envs.get_mut(i) {
+                *k = payload;
+            }
+        },
+        KeyValue::Value(i) => {
+            if let Some((_, v)) = envs.get_mut(i) {
+                *v = payload;
+            }
+        } 
+    }
     Task::none()
 }
 fn set_runner(state: &mut State, runner: Runner) -> Task<Message> {
@@ -343,32 +383,27 @@ fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
         Ok(_) => {},
         Err(e) => eprintln!("{}", e)
     };
-    let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
-    for entry in load_saved_games().unwrap() {
-        match entry {
-            GameEntry::Local(game) => {
-                if !game.get_grid().try_exists().unwrap() {
-                    let handle = Handle::from_path(app_data_dir().join(format!("grids/{}", PLACEHOLDER_GRID)));
-                    game_entries.push((GameEntry::Local(game), handle));
-                } else {
-                    let handle = Handle::from_path(game.get_grid());
-                    game_entries.push((GameEntry::Local(game), handle));
-                }
-            },
-            GameEntry::Steam(game) => {
-                if !game.get_grid().try_exists().unwrap() {
-                    let handle = Handle::from_path(app_data_dir().join(format!("grids/{}", PLACEHOLDER_GRID)));
-                    game_entries.push((GameEntry::Steam(game), handle));
-                } else {
-                    let handle = Handle::from_path(game.get_grid());
-                    game_entries.push((GameEntry::Steam(game), handle));
-                }
-            }
-        }
-    }
-    state.game_entries = game_entries;
+    state.game_entries = process_loaded_games();
     Task::none()
 }    //DISK SYNC CHAIN
+fn delete_game(state: &mut State, id: String) -> Task<Message> {
+    let undesired_entry = state.game_entries.iter().position(|(e, _)| e.get_id() == id);
+    if let Some(i) = undesired_entry {
+        let (entry, _) = state.game_entries.remove(i);
+        Task::perform(async move {
+            delete_from_disk(entry).await
+        }, Message::EntryDeleted)
+    } else {
+        Task::none()
+    }
+}
+fn game_deleted(state: &mut State, result: Result<(), Error>) -> Task<Message> {
+    match result {
+        Ok(_) => {},
+        Err(e) => {eprintln!("{}", e)}
+    }
+    Task::none()
+}
 fn sync_games(state: &mut State) -> Task<Message> {
     let game_library = state.game_entries.iter().map(|(entry, _)| entry.clone()).collect();
     Task::perform(async move {
@@ -384,20 +419,16 @@ fn fetch_steam_games_cmd() -> Task<Message> {
 fn steam_games_fetched(state: &mut State, result: Result<Vec<SteamEntry>, Error>) -> Task<Message> {
         match result {
             Ok(entries) => {
-                let mut new_entries = Vec::new();
-                for entry in entries {
-                    if state.game_entries.iter().any(|(e, _)| {
-                        match &e {
-                            GameEntry::Local(_) => {false},
-                            GameEntry::Steam(game) => {game.get_appid() == entry.get_appid()}
-                        }
-                    }) {
-                        continue;
-                    }
-                    let handle = Handle::from_path(entry.get_grid());
-                    new_entries.push((GameEntry::Steam(entry), handle));
-                }
-                state.game_entries.extend(new_entries);
+                let game_entries: Vec<(GameEntry, Handle)> = entries
+                    .into_iter()
+                    .filter(|e| {state.get_game_by_id(e.get_appid().to_string()).is_none()})
+                    .map(|entry| {
+                        let handle = Handle::from_path(entry.get_grid());
+                        (GameEntry::Steam(entry), handle)
+                    })
+                    .collect();
+
+                state.game_entries.extend(game_entries);
                 Task::done(Message::SyncGamesToDisk)
                 
             },
@@ -427,19 +458,31 @@ fn edit_game_modal(state: &State) -> Element<'_, Message> {
         text_input("Working directory", &entry.working_dir).on_input(|i| Message::GameEditOverlay(GameEdit::SetWorkingDir(SetMethod::TextInput(i)))), 
         button("rfd").on_press(Message::GameEditOverlay(GameEdit::SetWorkingDir(SetMethod::Rfd)))];
     let runner = pick_list(state.runners.as_ref(), entry.runner.as_ref(), |i |Message::GameEditOverlay(GameEdit::SetRunner(i)));
-    let launch_args = text_input("Launch arguments", &entry.launch_args).on_input(|i| Message::GameEditOverlay(GameEdit::SetLaunchArguments(i)));
-    let envs_variables = text_input("Enviroment variables", &entry.env_vars).on_input(|i| Message::GameEditOverlay(GameEdit::SetEnvVars(i)));
+    let launch_args = text_input("Launch arguments, for ex. -dx11", &entry.launch_args).on_input(|i| Message::GameEditOverlay(GameEdit::SetLaunchArguments(i)));
+    let wrappers = text_input("Wrappers, for ex. mangohud", &entry.wrappers).on_input(|i| Message::GameEditOverlay(GameEdit::SetWrapper(i)));
+    let env_fields = entry.env_vars.iter().enumerate().fold(column![], |acc, (i, (k,v))| {
+        acc.push(row![
+            text_input("Key", k).on_input(move |k| Message::GameEditOverlay(GameEdit::SetEnvVars(k, KeyValue::Key(i)))), 
+            text_input("Value", v).on_input(move |v| Message::GameEditOverlay(GameEdit::SetEnvVars(v, KeyValue::Value(i),))),
+            button("X").on_press(Message::GameEditOverlay(GameEdit::RemoveEnvField(i)))
+        ])
+    });
+    let env_fields = env_fields.push(button("Add an enviroment variable").on_press(Message::GameEditOverlay(GameEdit::AddEnvField)));
+    
+    let new_envs = container(env_fields);
     let finalization = row![
         button("Confirm").on_press(Message::GameEditOverlay(GameEdit::ConfirmEntry)),
         button("Cancel").on_press(Message::GameEditOverlay(GameEdit::CancelEntry))
     ];
-    container(column![poster, title, binary_path, working_dir, runner, launch_args, envs_variables, finalization]).into()
+    container(column![poster, title, binary_path, working_dir, runner, launch_args, wrappers, new_envs, finalization]).into()
 }
 
 pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
-    let entries = load_saved_games().unwrap();
-    for entry in entries {
+    let entries = load_saved_games();
+    eprintln!("{:#?}", entries);
+    
+    for entry in entries.unwrap() {
         let handle_path = match &entry {
             GameEntry::Local(g) => {g.get_grid()},
             GameEntry::Steam(g) => {g.get_grid()}
