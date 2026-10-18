@@ -1,14 +1,16 @@
+use crate::{data_model::GameEntry, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
 use std::path::PathBuf;
 use tokio::fs::{create_dir_all, remove_dir_all, remove_file, write};
-use crate::{data_model::GameEntry, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
 
 pub async fn save_to_disk(game_entries: Vec<GameEntry>) -> Result<(), Error> {
     for game_entry in game_entries {
-        let validated = game_dir_exists(game_entry.get_id()).await?.join(GAME_CFG_ENTRY_NAME);
+        let validated = game_dir_exists(game_entry.get_id())
+            .await?
+            .join(GAME_CFG_ENTRY_NAME);
         let formatted = toml::to_string_pretty(&game_entry)?;
         write(validated, formatted).await?;
     }
-    Ok(()) 
+    Ok(())
 }
 
 pub async fn delete_from_disk(game_entry: GameEntry) -> Result<(), Error> {
@@ -27,4 +29,3 @@ async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Error> {
     }
     Ok(game_dir)
 }
-

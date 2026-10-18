@@ -1,20 +1,22 @@
 #![allow(unused)]
-use std::{fs::{File, create_dir_all, read_to_string, write}, io::Write};
+use crate::{dirs::app_config_dir, error::Error};
 use serde::{Deserialize, Serialize};
-use crate::{error::Error, dirs::app_config_dir};
-
+use std::{
+    fs::{File, create_dir_all, read_to_string, write},
+    io::Write,
+};
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct AppConfig {
     pub version: String,
-    pub display: Display
+    pub display: Display,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub enum Display {
     #[default]
     GridView,
-    DetailsView
+    DetailsView,
 }
 
 pub fn read_config() -> Result<AppConfig, Error> {

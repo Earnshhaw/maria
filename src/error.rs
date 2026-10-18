@@ -11,7 +11,7 @@ pub enum Error {
     #[error("Serialization/Deserialization error")]
     SerdeError(String),
     #[error("GridDB API error")]
-    GridDBError(String)
+    GridDBError(String),
 }
 
 impl From<std::io::Error> for Error {

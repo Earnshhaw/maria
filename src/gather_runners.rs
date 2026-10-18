@@ -1,7 +1,10 @@
-use std::{collections::HashSet, fs::{DirEntry, read_dir}, path::{Path, PathBuf}};
-use serde::{Deserialize, Serialize};
 use crate::{dirs::steam_dir, error::Error};
-
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashSet,
+    fs::{DirEntry, read_dir},
+    path::{Path, PathBuf},
+};
 
 fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
     let dir_entries: Vec<DirEntry> = read_dir(protons_dir)?.filter_map(Result::ok).collect();
@@ -10,7 +13,7 @@ fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
         if !dir.path().is_dir() {
             continue;
         }
-        
+
         let dir_contents: Vec<DirEntry> = read_dir(dir.path())?.filter_map(Result::ok).collect();
         if valid_proton_dir(&dir_contents) {
             proton_versions.push(dir.path());
@@ -19,9 +22,11 @@ fn scan_dir(protons_dir: &Path) -> Result<Vec<PathBuf>, Error> {
     Ok(proton_versions)
 }
 
-
 fn valid_proton_dir(dir_contents: &Vec<DirEntry>) -> bool {
-    if dir_contents.into_iter().any(|e| e.file_name().to_string_lossy() == "proton") {
+    if dir_contents
+        .into_iter()
+        .any(|e| e.file_name().to_string_lossy() == "proton")
+    {
         return true;
     } else {
         return false;
@@ -30,7 +35,7 @@ fn valid_proton_dir(dir_contents: &Vec<DirEntry>) -> bool {
 
 pub fn fetch_runners() -> Result<Vec<RunnerEntry>, Error> {
     let mut runners: Vec<PathBuf> = vec![];
-    if steam_dir().try_exists()?{
+    if steam_dir().try_exists()? {
         let steam_dir = steam_dir();
         if let Ok(steam_proton) = scan_dir(&steam_dir.join("steamapps/common")) {
             runners.extend(steam_proton);
@@ -56,21 +61,26 @@ pub fn fetch_runners() -> Result<Vec<RunnerEntry>, Error> {
 }
 
 fn process_paths(paths: Vec<PathBuf>) -> Vec<RunnerEntry> {
-    paths.into_iter().filter_map(|raw_path| {
-        raw_path.file_name().map(|name| RunnerEntry::new(name.to_string_lossy(), raw_path.clone()))
-    }).collect()
+    paths
+        .into_iter()
+        .filter_map(|raw_path| {
+            raw_path
+                .file_name()
+                .map(|name| RunnerEntry::new(name.to_string_lossy(), raw_path.clone()))
+        })
+        .collect()
 }
 
 fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
     let mut unique_runners: Vec<RunnerEntry> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    
+
     for runner in runners {
         if seen.insert(runner.name().to_owned()) {
             unique_runners.push(runner);
         }
     }
-    unique_runners 
+    unique_runners
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Deserialize, Serialize)]
@@ -81,7 +91,10 @@ pub struct RunnerEntry {
 
 impl RunnerEntry {
     pub fn new(name: impl Into<String>, path: impl Into<PathBuf>) -> RunnerEntry {
-        RunnerEntry { name: name.into(), path: path.into() }
+        RunnerEntry {
+            name: name.into(),
+            path: path.into(),
+        }
     }
     pub fn name(&self) -> &str {
         &self.name
