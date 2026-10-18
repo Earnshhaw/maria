@@ -12,13 +12,15 @@ use crate::{
 };
 use iced::{
     Element, Length, Task,
+    futures::channel::mpsc::TrySendError,
     widget::{
-        button, column, container, grid, image::Handle, opaque, pane_grid, pick_list, row, stack,
-        text, text_input,
+        TextInput, button, column, container, grid, image::Handle, opaque, pane_grid, pick_list,
+        row, stack, text, text_input,
     },
 };
 use iced_aw::{ContextMenu, Menu, menu::Item};
 use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
+use tokio::{process::Child, task::spawn_blocking};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -105,7 +107,7 @@ pub enum Message {
     SyncGamesToDisk,
     Synced(Result<(), Error>),
     LaunchGame(String),
-    GameLaunched(Result<ExitStatus, Error>),
+    GameExited(Result<ExitStatus, Error>),
     PaneResized(pane_grid::ResizeEvent),
     GameEditOverlay(GameEdit),
     DeleteEntry(String),
@@ -128,6 +130,12 @@ pub enum GameEdit {
     SetWrapper(String),
     ConfirmEntry,
     CancelEntry,
+}
+
+impl From<GameEdit> for Message {
+    fn from(value: GameEdit) -> Self {
+        Message::GameEditOverlay(value)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -223,7 +231,7 @@ impl State {
             Message::SyncGamesToDisk => sync_games(self),
             Message::Synced(status) => synced(self, status),
             Message::LaunchGame(strid) => launch_game(self, strid),
-            Message::GameLaunched(status) => game_terminated(self, status),
+            Message::GameExited(status) => game_terminated(self, status),
             Message::PaneResized(resize) => pane_resized(self, resize),
             Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
             Message::DeleteEntry(id) => delete_game(self, id),
@@ -442,14 +450,16 @@ fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     }
     if let Some(game) = state.get_game_by_id(strid) {
         state.running_game = Some(game.clone());
-        iced_runtime::task::blocking(move |mut sender| {
-            let child = run_game(&game)
-                .unwrap()
-                .wait()
-                .map_err(|e| Error::IOError(e.to_string()));
-            let _ = sender.try_send(child);
-        })
-        .map(Message::GameLaunched)
+        Task::perform(
+            async move {
+                let child_spawn = run_game(&game).await;
+                match child_spawn {
+                    Ok(mut ch) => ch.wait().await.map_err(|e| Error::IOError(e.to_string())),
+                    Err(e) => Err(e),
+                }
+            },
+            Message::GameExited,
+        )
     } else {
         Task::none()
     }
@@ -535,56 +545,49 @@ fn modal<'a>(
 }
 fn edit_game_modal(state: &State) -> Element<'_, Message> {
     let entry = state.game_form.as_ref().unwrap();
-    let title = text_input("Title", &entry.title)
-        .on_input(|i| Message::GameEditOverlay(GameEdit::SetTitle(i)));
+    let title = text_input("Title", &entry.title).on_input(|i| GameEdit::SetTitle(i).into());
     let poster = button(iced::widget::image(&entry.grid_path).height(100))
-        .on_press(Message::GameEditOverlay(GameEdit::SetGridRfd));
+        .on_press(GameEdit::SetGridRfd.into());
     let binary_path = row![
         text_input("Path to executable", &entry.binary_path)
-            .on_input(|i| Message::GameEditOverlay(GameEdit::SetBinary(SetMethod::TextInput(i)))),
-        button("rfd").on_press(Message::GameEditOverlay(GameEdit::SetBinary(
-            SetMethod::Rfd
-        )))
+            .on_input(|i| GameEdit::SetBinary(SetMethod::TextInput(i)).into()),
+        button("rfd").on_press(GameEdit::SetBinary(SetMethod::Rfd).into())
     ];
     let working_dir = row![
-        text_input("Working directory", &entry.working_dir).on_input(|i| Message::GameEditOverlay(
-            GameEdit::SetWorkingDir(SetMethod::TextInput(i))
-        )),
-        button("rfd").on_press(Message::GameEditOverlay(GameEdit::SetWorkingDir(
-            SetMethod::Rfd
-        )))
+        text_input("Working directory", &entry.working_dir)
+            .on_input(|i| GameEdit::SetWorkingDir(SetMethod::TextInput(i)).into()),
+        button("rfd").on_press(GameEdit::SetWorkingDir(SetMethod::Rfd).into())
     ];
     let runner = pick_list(state.runners.as_ref(), entry.runner.as_ref(), |i| {
-        Message::GameEditOverlay(GameEdit::SetRunner(i))
+        GameEdit::SetRunner(i).into()
     });
     let launch_args = text_input("Launch arguments, for ex. -dx11", &entry.launch_args)
-        .on_input(|i| Message::GameEditOverlay(GameEdit::SetLaunchArguments(i)));
+        .on_input(|i| GameEdit::SetLaunchArguments(i).into());
     let wrappers = text_input("Wrappers, for ex. mangohud", &entry.wrappers)
-        .on_input(|i| Message::GameEditOverlay(GameEdit::SetWrapper(i)));
+        .on_input(|i| GameEdit::SetWrapper(i).into());
     let env_fields = entry
         .env_vars
         .iter()
         .enumerate()
         .fold(column![], |acc, (i, (k, v))| {
             acc.push(row![
-                text_input("Key", k).on_input(move |k| Message::GameEditOverlay(
-                    GameEdit::SetEnvVars(k, KeyValue::Key(i))
-                )),
-                text_input("Value", v).on_input(move |v| Message::GameEditOverlay(
-                    GameEdit::SetEnvVars(v, KeyValue::Value(i),)
-                )),
-                button("X").on_press(Message::GameEditOverlay(GameEdit::RemoveEnvField(i)))
+                text_input("Key", k)
+                    .on_input(move |k| GameEdit::SetEnvVars(k, KeyValue::Key(i)).into()),
+                text_input("Value", v).on_input(move |v| GameEdit::SetEnvVars(
+                    v,
+                    KeyValue::Value(i),
+                )
+                .into()),
+                button("X").on_press(GameEdit::RemoveEnvField(i).into())
             ])
         });
-    let env_fields = env_fields.push(
-        button("Add an enviroment variable")
-            .on_press(Message::GameEditOverlay(GameEdit::AddEnvField)),
-    );
+    let env_fields = env_fields
+        .push(button("Add an enviroment variable").on_press(GameEdit::AddEnvField.into()));
 
     let new_envs = container(env_fields);
     let finalization = row![
-        button("Confirm").on_press(Message::GameEditOverlay(GameEdit::ConfirmEntry)),
-        button("Cancel").on_press(Message::GameEditOverlay(GameEdit::CancelEntry))
+        button("Confirm").on_press(GameEdit::ConfirmEntry.into()),
+        button("Cancel").on_press(GameEdit::CancelEntry.into())
     ];
     container(column![
         poster,
@@ -603,7 +606,6 @@ fn edit_game_modal(state: &State) -> Element<'_, Message> {
 pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
     let entries = load_saved_games();
-    eprintln!("{:#?}", entries);
 
     for entry in entries.unwrap() {
         let handle_path = match &entry {

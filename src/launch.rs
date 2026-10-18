@@ -3,10 +3,8 @@ use crate::{
     dirs::prefix_dir,
     error::Error,
 };
-use std::{
-    fs::create_dir_all,
-    process::{Child, Command},
-};
+use std::fs::create_dir_all;
+use tokio::process::{Child, Command};
 
 fn make_prefix(game: &GameEntry) {
     match &game {
@@ -24,7 +22,7 @@ fn make_prefix(game: &GameEntry) {
     }
 }
 
-pub fn run_game(game: &GameEntry) -> Result<Child, Error> {
+pub async fn run_game(game: &GameEntry) -> Result<Child, Error> {
     make_prefix(game);
     command_build(game)
         .spawn()
