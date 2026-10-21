@@ -1,5 +1,4 @@
 mod api_keys;
-mod boot;
 mod config;
 mod data_model;
 mod dirs;
@@ -11,8 +10,7 @@ mod gui;
 mod id;
 mod launch;
 mod misc;
-mod style;
-use crate::{boot::boot, gui::State};
+use crate::gui::{State, boot};
 use iced::{Font, Settings, Theme, application};
 
 fn main() -> iced::Result {

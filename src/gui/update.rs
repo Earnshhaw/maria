@@ -1,4 +1,8 @@
-use crate::gui::gui_prelude::*;
+use crate::gui::gui_prelude::{
+    Error, ExitStatus, GameDraft, GameEdit, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID,
+    Runner, State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk,
+    fetch_steam_games, load_saved_games, pane_grid, run_game, save_to_disk,
+};
 
 #[derive(Debug, Clone)]
 pub enum KeyValue {
@@ -38,7 +42,7 @@ pub fn remove_env_field(state: &mut State, i: usize) -> Task<Message> {
 pub fn edit_title(state: &mut State, title: String) -> Task<Message> {
     state.temp_entry().title = title;
     Task::none()
-} //GAMEDRAFT EDIT OPERATIONS
+}
 fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
     match game {
         GameEntry::Local(game) => {
@@ -168,7 +172,7 @@ fn set_binary_path(state: &mut State, method: SetMethod) -> Task<Message> {
         SetMethod::TextInput(inp) => state.temp_entry().binary_path = inp,
     }
     Task::none()
-} //GAMEDRAFT EDIT OPERATIONS
+}
 
 pub fn pane_resized(state: &mut State, resize_event: pane_grid::ResizeEvent) -> Task<Message> {
     state.pane.resize(resize_event.split, resize_event.ratio);
@@ -186,7 +190,7 @@ pub fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> 
         }
     }
     Task::none()
-} //GAME PROCESS RUN&TRACK CHAIN
+}
 pub fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     if state.running_game.is_some() {
         return Task::none();
@@ -206,7 +210,7 @@ pub fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     } else {
         Task::none()
     }
-} //GAME PROCESS RUN&TRACK CHAIN
+}
 
 pub fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
     match status {
@@ -215,7 +219,7 @@ pub fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
     };
     state.game_entries = process_loaded_games();
     Task::none()
-} //DISK SYNC CHAIN
+}
 pub fn delete_game(state: &mut State, id: String) -> Task<Message> {
     let undesired_entry = state
         .game_entries
@@ -231,7 +235,7 @@ pub fn delete_game(state: &mut State, id: String) -> Task<Message> {
         Task::none()
     }
 }
-pub fn game_deleted(state: &mut State, result: Result<(), Error>) -> Task<Message> {
+pub fn game_deleted(result: Result<(), Error>) -> Task<Message> {
     match result {
         Ok(_) => {}
         Err(e) => {
@@ -250,14 +254,14 @@ pub fn sync_games(state: &mut State) -> Task<Message> {
         async move { save_to_disk(game_library).await },
         Message::Synced,
     )
-} //DISK SYNC CHAIN
+}
 
 pub fn fetch_steam_games_cmd() -> Task<Message> {
     Task::perform(
         async move { fetch_steam_games().await },
         Message::SteamGamesFetched,
     )
-} //STEAM GAMES CHAIN
+}
 pub fn steam_games_fetched(
     state: &mut State,
     result: Result<Vec<SteamEntry>, Error>,
@@ -281,7 +285,7 @@ pub fn steam_games_fetched(
             Task::none()
         }
     }
-} //STEAM GAMES CHAIN
+}
 
 pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];

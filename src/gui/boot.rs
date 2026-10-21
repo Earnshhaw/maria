@@ -1,9 +1,6 @@
-use crate::{
-    config::read_config,
-    data_model::{ProtonVariant, Runner},
-    dirs::persistence_dirs_valid,
-    gather_runners::fetch_runners,
-    gui::{State, process_loaded_games},
+use crate::gui::gui_prelude::{
+    ProtonVariant, Runner, State, fetch_runners, persistence_dirs_valid, process_loaded_games,
+    read_config,
 };
 
 pub fn boot() -> State {

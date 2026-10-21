@@ -1,4 +1,7 @@
-use crate::gui::gui_prelude::*;
+use crate::gui::gui_prelude::{
+    Element, GameEdit, KeyValue, Message, SetMethod, State, button, container, opaque, pick_list,
+    row, stack, text_input,
+};
 
 pub fn modal<'a>(
     base: impl Into<Element<'a, Message>>,
@@ -6,6 +9,7 @@ pub fn modal<'a>(
 ) -> Element<'a, Message> {
     stack!(base.into(), opaque(content.into())).into()
 }
+
 pub fn edit_game_modal(state: &State) -> Element<'_, Message> {
     let entry = state.game_form.as_ref().unwrap();
     let title = text_input("Title", &entry.title).on_input(|i| GameEdit::SetTitle(i).into());

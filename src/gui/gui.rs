@@ -1,6 +1,13 @@
-use crate::gui::gui_prelude::*;
+use crate::gui::gui_prelude::{
+    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEntry, Handle, KeyValue, LocalEntry,
+    PLACEHOLDER_GRID, PathBuf, Runner, SetMethod, SteamEntry, Task, app_data_dir, delete_game,
+    edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted,
+    game_edit_overlay_branch, game_grid_view, game_terminated, launch_game, modal, pane_grid,
+    pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view,
+};
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct State {
     pub game_entries: Vec<(GameEntry, Handle)>,
     pub runners: Vec<Runner>,
@@ -143,7 +150,7 @@ impl State {
             Message::PaneResized(resize) => pane_resized(self, resize),
             Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
             Message::DeleteEntry(id) => delete_game(self, id),
-            Message::EntryDeleted(result) => game_deleted(self, result),
+            Message::EntryDeleted(result) => game_deleted(result),
         }
     }
     pub fn new(
