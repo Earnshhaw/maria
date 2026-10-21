@@ -19,7 +19,7 @@ fn main() -> iced::Result {
     application(boot, State::update, State::view)
         .settings(Settings {
             vsync: false,
-            default_font: Font::with_name("JetBrains Mono"),
+            default_font: Font::with_name("JetBrainsMono Nerd Font"),
             antialiasing: true,
             ..Default::default()
         })
