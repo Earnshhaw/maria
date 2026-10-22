@@ -1,6 +1,6 @@
 use crate::gui::gui_prelude::{
-    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEntry, Handle, KeyValue, LocalEntry,
-    PLACEHOLDER_GRID, PathBuf, Runner, SetMethod, SteamEntry, Task, app_data_dir, delete_game,
+    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEdit, GameEntry, Handle, LocalEntry,
+    PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game,
     edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted,
     game_edit_overlay_branch, game_grid_view, game_terminated, launch_game, modal, pane_grid,
     pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view,
@@ -97,30 +97,6 @@ pub enum Message {
     GameEditOverlay(GameEdit),
     DeleteEntry(String),
     EntryDeleted(Result<(), Error>),
-}
-
-#[derive(Debug, Clone)]
-pub enum GameEdit {
-    AddLocalGame,
-    EditLocalGame(GameEntry),
-    SetTitle(String),
-    SetGridRfd,
-    SetBinary(SetMethod),
-    SetWorkingDir(SetMethod),
-    SetRunner(Runner),
-    SetLaunchArguments(String),
-    SetEnvVars(String, KeyValue),
-    AddEnvField,
-    RemoveEnvField(usize),
-    SetWrapper(String),
-    ConfirmEntry,
-    CancelEntry,
-}
-
-impl From<GameEdit> for Message {
-    fn from(value: GameEdit) -> Self {
-        Message::GameEditOverlay(value)
-    }
 }
 
 impl State {

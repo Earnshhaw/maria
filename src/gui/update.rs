@@ -1,7 +1,7 @@
 use crate::gui::gui_prelude::{
-    Error, ExitStatus, GameDraft, GameEdit, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID,
-    Runner, State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk,
-    fetch_steam_games, load_saved_games, pane_grid, run_game, save_to_disk,
+    Error, ExitStatus, GameDraft, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID, Runner,
+    State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk, fetch_steam_games,
+    load_saved_games, pane_grid, run_game, save_to_disk,
 };
 
 #[derive(Debug, Clone)]
@@ -16,22 +16,52 @@ pub enum SetMethod {
     TextInput(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum GameEdit {
+    AddLocalGame,
+    EditLocalGame(GameEntry),
+    SetTitle(String),
+    SetGridRfd,
+    GridSet(Option<rfd::FileHandle>),
+    SetBinary(SetMethod),
+    BinarySet(Option<rfd::FileHandle>),
+    SetWorkingDir(SetMethod),
+    WorkingDirSet(Option<rfd::FileHandle>),
+    SetRunner(Runner),
+    SetLaunchArguments(String),
+    SetEnvVars(String, KeyValue),
+    AddEnvField,
+    RemoveEnvField(usize),
+    SetWrapper(String),
+    ConfirmEntry,
+    CancelEntry,
+}
+
+impl From<GameEdit> for Message {
+    fn from(value: GameEdit) -> Self {
+        Message::GameEditOverlay(value)
+    }
+}
+
 pub fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Message> {
     match cmd {
         GameEdit::CancelEntry => cancel_entry(state),
         GameEdit::ConfirmEntry => confirm_entry(state),
-        GameEdit::SetBinary(method) => set_binary_path(state, method),
+        GameEdit::SetBinary(method) => set_binary_dialogue(state, method),
         GameEdit::SetEnvVars(payload, kv) => set_env_vars(state, payload, kv),
-        GameEdit::SetGridRfd => set_grid(state),
+        GameEdit::SetGridRfd => set_grid_dialogue(),
         GameEdit::SetLaunchArguments(args) => set_launch_args(state, args),
         GameEdit::SetRunner(runner) => set_runner(state, runner),
-        GameEdit::SetWorkingDir(method) => set_working_dir(state, method),
+        GameEdit::SetWorkingDir(method) => set_working_dialogue(state, method),
         GameEdit::AddLocalGame => add_local_game_menu(state),
         GameEdit::EditLocalGame(game) => edit_local_game(state, game),
         GameEdit::SetTitle(title) => edit_title(state, title),
         GameEdit::AddEnvField => add_env_field(state),
         GameEdit::RemoveEnvField(i) => remove_env_field(state, i),
         GameEdit::SetWrapper(wrappers) => edit_wrappers(state, wrappers),
+        GameEdit::GridSet(handle) => grid_set(state, handle),
+        GameEdit::BinarySet(handle) => binary_set(state, handle),
+        GameEdit::WorkingDirSet(handle) => working_dir_set(state, handle),
     }
 }
 
@@ -136,42 +166,68 @@ fn set_launch_args(state: &mut State, args: String) -> Task<Message> {
     state.temp_entry().launch_args = args;
     Task::none()
 }
-fn set_working_dir(state: &mut State, method: SetMethod) -> Task<Message> {
+fn working_dir_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
+    if state.game_form.is_none() {
+        return Task::none();
+    }
+    if let Some(picked) = handle {
+        state.temp_entry().working_dir = picked.path().to_string_lossy().into_owned();
+    }
+    Task::none()
+}
+fn set_working_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
     match method {
         SetMethod::Rfd => {
-            let rfd = rfd::FileDialog::new().pick_folder();
-            if let Some(folder) = rfd {
-                state.temp_entry().working_dir = folder.to_string_lossy().into_owned();
-            }
+            let rfd = rfd::AsyncFileDialog::new().pick_folder();
+            return Task::perform(async move { rfd.await }, |i| {
+                GameEdit::WorkingDirSet(i).into()
+            });
         }
         SetMethod::TextInput(text) => state.temp_entry().working_dir = text,
     }
     Task::none()
 }
-fn set_grid(state: &mut State) -> Task<Message> {
-    let rfd = rfd::FileDialog::new()
-        .add_filter("pictures", &["jpg", "jpeg", "png"])
-        .pick_file();
-    if let Some(img) = rfd {
-        let entry = state.temp_entry();
-        entry.grid_path = img;
+fn grid_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
+    if state.game_form.is_none() {
+        return Task::none();
+    }
+    if let Some(handle) = handle {
+        state.temp_entry().grid_path = handle.path().to_owned();
     }
     Task::none()
 }
-fn set_binary_path(state: &mut State, method: SetMethod) -> Task<Message> {
-    match method {
-        SetMethod::Rfd => {
-            let rfd = rfd::FileDialog::new().pick_file();
-            if let Some(file) = rfd {
-                state.temp_entry().binary_path = file.to_string_lossy().into_owned();
-                return Task::done(Message::GameEditOverlay(GameEdit::SetWorkingDir(
-                    SetMethod::TextInput(file.parent().unwrap().to_string_lossy().into_owned()),
-                )));
-            }
-        }
-        SetMethod::TextInput(inp) => state.temp_entry().binary_path = inp,
+fn set_grid_dialogue() -> Task<Message> {
+    let rfd = rfd::AsyncFileDialog::new().pick_file();
+    Task::perform(async move { rfd.await }, |i| GameEdit::GridSet(i).into())
+}
+fn binary_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
+    if state.game_form.is_none() {
+        return Task::none();
+    }
+
+    if let Some(picked) = handle {
+        let path = picked.path();
+        state.temp_entry().binary_path = path.to_string_lossy().into_owned();
+        return Task::done(
+            GameEdit::SetWorkingDir(SetMethod::TextInput(
+                path.parent().unwrap().to_string_lossy().into_owned(),
+            ))
+            .into(),
+        );
     }
     Task::none()
+}
+fn set_binary_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
+    match method {
+        SetMethod::Rfd => {
+            let rfd = rfd::AsyncFileDialog::new().pick_file();
+            Task::perform(async move { rfd.await }, |i| GameEdit::BinarySet(i).into())
+        }
+        SetMethod::TextInput(inp) => {
+            state.temp_entry().binary_path = inp;
+            Task::none()
+        }
+    }
 }
 
 pub fn pane_resized(state: &mut State, resize_event: pane_grid::ResizeEvent) -> Task<Message> {

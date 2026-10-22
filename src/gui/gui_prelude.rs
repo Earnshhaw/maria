@@ -7,10 +7,10 @@ pub use crate::{
     gather_games::{fetch_steam_games, load_saved_games},
     gather_runners::fetch_runners,
     gui::boot::boot,
-    gui::gui::{GameDraft, GameEdit, Message, Overlay, State, default_game_entry},
+    gui::gui::{GameDraft, Message, Overlay, State, default_game_entry},
     gui::modal::{edit_game_modal, modal},
     gui::update::{
-        KeyValue, SetMethod, delete_game, fetch_steam_games_cmd, game_deleted,
+        GameEdit, KeyValue, SetMethod, delete_game, fetch_steam_games_cmd, game_deleted,
         game_edit_overlay_branch, game_terminated, launch_game, pane_resized, process_loaded_games,
         steam_games_fetched, sync_games, synced,
     },
