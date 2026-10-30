@@ -1,6 +1,8 @@
+use iced::Padding;
+
 use crate::gui::gui_prelude::{
     ContextMenu, Element, GameEdit, GameEntry, Item, Length, Menu, Message, State, button,
-    container, grid, scrollable, text,
+    container, grid, scrollable, text, button_card, row, Space
 };
 
 const PANESPLIT: f32 = 2 as f32 / 3 as f32;
@@ -12,9 +14,13 @@ pub fn game_grid_view(state: &State) -> Element<'_, Message> {
                     button(
                         iced::widget::image(handle) //UNDERLAY
                             .border_radius(10)
-                            .content_fit(iced::ContentFit::Contain)
-                            .height(Length::Fill),
+                            .height(Length::Fill)
+                            .width(Length::Fill),
                     )
+                    .padding(Padding::new(0.5))
+                    .width(600)
+                    .height(900)
+                    .style(button_card)
                     .on_press(Message::LaunchGame(entry.get_id())) //UNDERLAY
                 },
                 || {
@@ -63,5 +69,5 @@ pub fn topbar_view(state: &State) -> Element<'_, Message> {
         text("Add a game"),
         Menu::new(options).width(Length::Fixed(125.0))
     ));
-    container(cx).width(Length::Fill).into()
+    container(row![Space::new().width(Length::Fill), cx]).padding(10).width(Length::Fill).into()
 }

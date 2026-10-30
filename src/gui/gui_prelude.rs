@@ -6,6 +6,7 @@ pub use crate::{
     error::Error,
     gather_games::{fetch_steam_games, load_saved_games},
     gather_runners::fetch_runners,
+    gui::style::{button_card},
     gui::boot::boot,
     gui::gui::{GameDraft, Message, Overlay, State, default_game_entry},
     gui::modal::{edit_game_modal, modal},
@@ -23,7 +24,7 @@ pub use iced::{
     Element, Length, Task,
     widget::{
         button, container, grid, image::Handle, opaque, pane_grid, pick_list, row, scrollable,
-        stack, text, text_input,
+        stack, text, text_input, Space
     },
 };
 pub use iced_aw::{ContextMenu, Menu, menu::Item};

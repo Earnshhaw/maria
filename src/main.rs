@@ -21,6 +21,6 @@ fn main() -> iced::Result {
             antialiasing: true,
             ..Default::default()
         })
-        .theme(Theme::KanagawaWave)
+        .theme(Theme::Ferra)
         .run()
 }
