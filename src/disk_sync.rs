@@ -1,5 +1,5 @@
-use crate::{data_model::GameEntry, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
-use std::path::PathBuf;
+use crate::{data_model::GameEntry, dirs::{app_data_dir}, error::Error, misc::GAME_CFG_ENTRY_NAME};
+use std::{fs::File, path::{Path, PathBuf}};
 use tokio::fs::{create_dir_all, remove_dir_all, remove_file, write};
 
 pub async fn save_to_disk(game_entries: Vec<GameEntry>) -> Result<(), Error> {
@@ -14,10 +14,9 @@ pub async fn save_to_disk(game_entries: Vec<GameEntry>) -> Result<(), Error> {
 }
 
 pub async fn delete_from_disk(game_entry: GameEntry) -> Result<(), Error> {
-    let data_dir = app_data_dir();
-    let undesired_entry = data_dir.join(game_entry.get_id());
-    let undesired_grid = data_dir.join(format!("grids/{}.png", game_entry.get_id()));
-    remove_dir_all(undesired_entry).await?;
+    let undesired_entry_dir = app_data_dir().join(game_entry.get_id());
+    let undesired_grid = game_entry.get_grid();
+    remove_dir_all(undesired_entry_dir).await?;
     remove_file(undesired_grid).await?;
     Ok(())
 }
@@ -28,4 +27,9 @@ async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Error> {
         create_dir_all(&game_dir).await?;
     }
     Ok(game_dir)
+}
+
+pub fn save_grid(from: &Path, to: &Path) -> Result<(), Error> {
+    std::fs::copy(from, to)?;
+    Ok(())
 }

@@ -1,8 +1,6 @@
-use iced::Padding;
-
 use crate::gui::gui_prelude::{
     ContextMenu, Element, GameEdit, GameEntry, Item, Length, Menu, Message, State, button,
-    container, grid, scrollable, text, button_card, row, Space
+    container, grid, scrollable, text, button_card, row, Space, image, column
 };
 
 const PANESPLIT: f32 = 2 as f32 / 3 as f32;
@@ -12,30 +10,27 @@ pub fn game_grid_view(state: &State) -> Element<'_, Message> {
             ContextMenu::new(
                 {
                     button(
-                        iced::widget::image(handle) //UNDERLAY
-                            .border_radius(10)
-                            .height(Length::Fill)
-                            .width(Length::Fill),
-                    )
-                    .padding(Padding::new(0.5))
-                    .width(600)
+                        image(handle).width(Length::Fill).height(Length::Fill).border_radius(25).filter_method(image::FilterMethod::Linear)
                     .height(900)
+                    .height(600))
                     .style(button_card)
-                    .on_press(Message::LaunchGame(entry.get_id())) //UNDERLAY
+                    .padding(0)
+                    .on_press(Message::LaunchGame(entry.get_id()))
                 },
                 || {
                     //OVERLAY
                     let button_m = match entry {
                         GameEntry::Local(_) => {
-                            iced::widget::column![button("Edit").on_press(
+                            column![button("Edit").on_press(
                                 Message::GameEditOverlay(GameEdit::EditLocalGame(entry.clone()))
                             )]
                         }
                         GameEntry::Steam(_) => {
-                            iced::widget::column![]
+                            column![]
                         }
                     };
                     let cx = button_m
+                        .push(button("Run").on_press(Message::LaunchGame(entry.get_id())))
                         .push(button("Delete").on_press(Message::DeleteEntry(entry.get_id())));
                     cx.into()
                 }, //OVERLAY

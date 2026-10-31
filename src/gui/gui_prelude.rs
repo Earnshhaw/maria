@@ -24,7 +24,7 @@ pub use iced::{
     Element, Length, Task,
     widget::{
         button, container, grid, image::Handle, opaque, pane_grid, pick_list, row, scrollable,
-        stack, text, text_input, Space
+        stack, text, text_input, Space, image, column
     },
 };
 pub use iced_aw::{ContextMenu, Menu, menu::Item};

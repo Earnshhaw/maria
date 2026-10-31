@@ -26,7 +26,7 @@ pub async fn run_game(game: &GameEntry) -> Result<Child, Error> {
     make_prefix(game);
     command_build(game)
         .spawn()
-        .map_err(|e| Error::IOError(e.to_string()))
+        .map_err(|e| Error::IOError { err_msg: e.to_string() })
 }
 
 fn command_build(entry: &GameEntry) -> Command {

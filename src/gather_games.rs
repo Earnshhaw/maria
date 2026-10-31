@@ -57,7 +57,7 @@ fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
 
 pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
     if !steam_dir().try_exists()? {
-        return Err(Error::IOError("Weird error".to_string())); //maybe redundant ?
+        return Err(Error::IOError { err_msg: "Unreachable branch reached?".to_string() }); //maybe redundant ?
     }
 
     let steam_client = Arc::new(steamgriddb_api::Client::new(steamgriddb_api_key()));
@@ -93,7 +93,7 @@ pub async fn fetch_steam_games() -> Result<Vec<SteamEntry>, Error> {
         };
         let id: u64 = root_contents["appid"]
             .parse()
-            .map_err(|_| Error::ParseError)?;
+            .map_err(|e: std::num::ParseIntError| Error::ParseError{err_msg: e.to_string()})?;
         let grid_path = app_data_dir().join("grids");
         if !grid_path.try_exists()? {
             create_dir_all(&grid_path)?;
@@ -130,8 +130,7 @@ async fn get_grid_for_id(
                 },
             )),
         )
-        .await
-        .map_err(|e| Error::GridDBError(e.to_string()))?;
+        .await.map_err(|e| Error::GridDBError { err_msg: e.to_string() })?;
     let chosen_img = res.remove(rand::random_range(0..res.len()));
     let response = client.get(&chosen_img.url).send().await?.bytes().await?;
     let grid_path = app_data_dir().join(format!("grids/{}.png", id));

@@ -1,6 +1,6 @@
 use crate::gui::gui_prelude::{
     Element, GameEdit, KeyValue, Message, SetMethod, State, button, container, opaque, pick_list,
-    row, stack, text_input,
+    row, stack, text_input, image
 };
 
 pub fn modal<'a>(
@@ -13,7 +13,7 @@ pub fn modal<'a>(
 pub fn edit_game_modal(state: &State) -> Element<'_, Message> {
     let entry = state.game_form.as_ref().unwrap();
     let title = text_input("Title", &entry.title).on_input(|i| GameEdit::SetTitle(i).into());
-    let poster = button(iced::widget::image(&entry.grid_path).height(100))
+    let poster = button(image(&entry.grid_path).height(100))
         .on_press(GameEdit::SetGridRfd.into());
     let binary_path = row![
         text_input("Path to executable", &entry.binary_path)

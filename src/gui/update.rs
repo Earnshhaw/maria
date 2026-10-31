@@ -1,8 +1,8 @@
-use crate::gui::gui_prelude::{
+use crate::{ disk_sync::save_grid, gui::gui_prelude::{
     Error, ExitStatus, GameDraft, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID, Runner,
     State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk, fetch_steam_games,
     load_saved_games, pane_grid, run_game, save_to_disk,
-};
+}};
 
 #[derive(Debug, Clone)]
 pub enum KeyValue {
@@ -67,12 +67,10 @@ pub fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Messag
 
 pub fn remove_env_field(state: &mut State, i: usize) -> Task<Message> {
     state.temp_entry().env_vars.remove(i);
-    Task::none()
-}
+    Task::none()}
 pub fn edit_title(state: &mut State, title: String) -> Task<Message> {
     state.temp_entry().title = title;
-    Task::none()
-}
+    Task::none()}
 fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
     match game {
         GameEntry::Local(game) => {
@@ -96,47 +94,43 @@ fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
             Task::none()
         }
         GameEntry::Steam(_) => Task::none(),
-    }
-}
+    }}
 fn edit_wrappers(state: &mut State, payload: String) -> Task<Message> {
     state.temp_entry().wrappers = payload;
-    Task::none()
-}
+    Task::none()}
 fn confirm_entry(state: &mut State) -> Task<Message> {
-    if let Some(new) = state.game_form.as_ref() {
+    if let Some(pending) = state.game_form.as_ref() {
+        std::fs::copy(&pending.grid_path, app_data_dir().join("grids").join(pending.id.to_string()).with_extension(pending.grid_path.extension().unwrap())).unwrap();
         if let Some(old) = state
             .game_entries
             .iter_mut()
-            .find(|(entry, _)| entry.get_id() == new.id.to_string())
+            .find(|(entry, _)| entry.get_id() == pending.id.to_string())
         {
             *old = (
-                GameEntry::Local(new.to_owned().into()),
-                Handle::from(&new.grid_path),
+                GameEntry::Local(pending.to_owned().into()),
+                Handle::from_path(&pending.grid_path),
             );
         } else {
             let new_entry = (
-                GameEntry::Local(new.to_owned().into()),
-                Handle::from(&new.grid_path),
+                GameEntry::Local(pending.to_owned().into()),
+                Handle::from_path(&pending.grid_path),
             );
             state.game_entries.push(new_entry);
         }
     }
     state.game_form = None;
     state.overlay = Overlay::None;
-    Task::done(Message::SyncGamesToDisk)
-}
+    Task::done(Message::SyncGamesToDisk)}
 fn cancel_entry(state: &mut State) -> Task<Message> {
     state.overlay = Overlay::None;
     state.game_form = None;
-    Task::none()
-}
+    Task::none()}
 fn add_env_field(state: &mut State) -> Task<Message> {
     state
         .temp_entry()
         .env_vars
         .push((String::new(), String::new()));
-    Task::none()
-}
+    Task::none()}
 fn set_env_vars(state: &mut State, payload: String, kv: KeyValue) -> Task<Message> {
     let envs = &mut state.temp_entry().env_vars;
     match kv {
@@ -151,21 +145,17 @@ fn set_env_vars(state: &mut State, payload: String, kv: KeyValue) -> Task<Messag
             }
         }
     }
-    Task::none()
-}
+    Task::none()}
 fn set_runner(state: &mut State, runner: Runner) -> Task<Message> {
     state.temp_entry().runner = Some(runner);
-    Task::none()
-}
+    Task::none()}
 fn add_local_game_menu(state: &mut State) -> Task<Message> {
     state.game_form = Some(default_game_entry());
     state.overlay = Overlay::GameEdit;
-    Task::none()
-}
+    Task::none()}
 fn set_launch_args(state: &mut State, args: String) -> Task<Message> {
     state.temp_entry().launch_args = args;
-    Task::none()
-}
+    Task::none()}
 fn working_dir_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
     if state.game_form.is_none() {
         return Task::none();
@@ -173,8 +163,7 @@ fn working_dir_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<M
     if let Some(picked) = handle {
         state.temp_entry().working_dir = picked.path().to_string_lossy().into_owned();
     }
-    Task::none()
-}
+    Task::none()}
 fn set_working_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
     match method {
         SetMethod::Rfd => {
@@ -185,8 +174,7 @@ fn set_working_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
         }
         SetMethod::TextInput(text) => state.temp_entry().working_dir = text,
     }
-    Task::none()
-}
+    Task::none()}
 fn grid_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
     if state.game_form.is_none() {
         return Task::none();
@@ -194,12 +182,10 @@ fn grid_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message>
     if let Some(handle) = handle {
         state.temp_entry().grid_path = handle.path().to_owned();
     }
-    Task::none()
-}
+    Task::none()}
 fn set_grid_dialogue() -> Task<Message> {
     let rfd = rfd::AsyncFileDialog::new().pick_file();
-    Task::perform(async move { rfd.await }, |i| GameEdit::GridSet(i).into())
-}
+    Task::perform(async move { rfd.await }, |i| GameEdit::GridSet(i).into())}
 fn binary_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Message> {
     if state.game_form.is_none() {
         return Task::none();
@@ -208,15 +194,17 @@ fn binary_set(state: &mut State, handle: Option<rfd::FileHandle>) -> Task<Messag
     if let Some(picked) = handle {
         let path = picked.path();
         state.temp_entry().binary_path = path.to_string_lossy().into_owned();
-        return Task::done(
+        let first: Task<Message> = Task::done(
             GameEdit::SetWorkingDir(SetMethod::TextInput(
                 path.parent().unwrap().to_string_lossy().into_owned(),
-            ))
-            .into(),
+            )).into(),
         );
+        if state.temp_entry().title.is_empty() {
+            return first.chain(Task::done(GameEdit::SetTitle(path.file_stem().unwrap().to_string_lossy().into_owned()).into()))
+        }
+        return first;
     }
-    Task::none()
-}
+    Task::none()}
 fn set_binary_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
     match method {
         SetMethod::Rfd => {
@@ -227,13 +215,11 @@ fn set_binary_dialogue(state: &mut State, method: SetMethod) -> Task<Message> {
             state.temp_entry().binary_path = inp;
             Task::none()
         }
-    }
-}
+    }}
 
 pub fn pane_resized(state: &mut State, resize_event: pane_grid::ResizeEvent) -> Task<Message> {
     state.pane.resize(resize_event.split, resize_event.ratio);
-    Task::none()
-}
+    Task::none()}
 
 pub fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> Task<Message> {
     state.running_game.take();
@@ -245,8 +231,7 @@ pub fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> 
             eprintln!("{}", e)
         }
     }
-    Task::none()
-}
+    Task::none()}
 pub fn launch_game(state: &mut State, strid: String) -> Task<Message> {
     if state.running_game.is_some() {
         return Task::none();
@@ -257,7 +242,7 @@ pub fn launch_game(state: &mut State, strid: String) -> Task<Message> {
             async move {
                 let child_spawn = run_game(&game).await;
                 match child_spawn {
-                    Ok(mut ch) => ch.wait().await.map_err(|e| Error::IOError(e.to_string())),
+                    Ok(mut ch) => ch.wait().await.map_err(|e| Error::IOError { err_msg: e.to_string()}),
                     Err(e) => Err(e),
                 }
             },
@@ -265,17 +250,16 @@ pub fn launch_game(state: &mut State, strid: String) -> Task<Message> {
         )
     } else {
         Task::none()
-    }
-}
+    }}
 
 pub fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
     match status {
         Ok(_) => {}
         Err(e) => eprintln!("{}", e),
     };
+
     state.game_entries = process_loaded_games();
-    Task::none()
-}
+    Task::none()}
 pub fn delete_game(state: &mut State, id: String) -> Task<Message> {
     let undesired_entry = state
         .game_entries
@@ -289,8 +273,7 @@ pub fn delete_game(state: &mut State, id: String) -> Task<Message> {
         )
     } else {
         Task::none()
-    }
-}
+    }}
 pub fn game_deleted(result: Result<(), Error>) -> Task<Message> {
     match result {
         Ok(_) => {}
@@ -298,8 +281,7 @@ pub fn game_deleted(result: Result<(), Error>) -> Task<Message> {
             eprintln!("{}", e)
         }
     }
-    Task::none()
-}
+    Task::none()}
 pub fn sync_games(state: &mut State) -> Task<Message> {
     let game_library = state
         .game_entries
@@ -309,19 +291,16 @@ pub fn sync_games(state: &mut State) -> Task<Message> {
     Task::perform(
         async move { save_to_disk(game_library).await },
         Message::Synced,
-    )
-}
+    )}
 
 pub fn fetch_steam_games_cmd() -> Task<Message> {
     Task::perform(
         async move { fetch_steam_games().await },
         Message::SteamGamesFetched,
-    )
-}
+    )}
 pub fn steam_games_fetched(
     state: &mut State,
-    result: Result<Vec<SteamEntry>, Error>,
-) -> Task<Message> {
+    result: Result<Vec<SteamEntry>, Error>,) -> Task<Message> {
     match result {
         Ok(entries) => {
             let game_entries: Vec<(GameEntry, Handle)> = entries
@@ -340,8 +319,7 @@ pub fn steam_games_fetched(
             eprintln!("{}", e);
             Task::none()
         }
-    }
-}
+    }}
 
 pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
     let mut game_entries: Vec<(GameEntry, Handle)> = vec![];
@@ -359,5 +337,4 @@ pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
         };
         game_entries.push((entry, handle));
     }
-    game_entries
-}
+    game_entries}
