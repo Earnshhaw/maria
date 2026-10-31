@@ -1,4 +1,4 @@
-use crate::{ disk_sync::save_grid, gui::gui_prelude::{
+use crate::{ dirs::grid_path, disk_sync::save_grid, gui::gui_prelude::{
     Error, ExitStatus, GameDraft, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID, Runner,
     State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk, fetch_steam_games,
     load_saved_games, pane_grid, run_game, save_to_disk,
@@ -100,7 +100,13 @@ fn edit_wrappers(state: &mut State, payload: String) -> Task<Message> {
     Task::none()}
 fn confirm_entry(state: &mut State) -> Task<Message> {
     if let Some(pending) = state.game_form.as_ref() {
-        std::fs::copy(&pending.grid_path, app_data_dir().join("grids").join(pending.id.to_string()).with_extension(pending.grid_path.extension().unwrap())).unwrap();
+        let dest = grid_path(&pending.grid_path, pending.id.to_string());
+        let src = &pending.grid_path;
+        let grid_task = if dest != *src {
+            let src = src.clone();
+            Task::perform(async move {tokio::fs::copy(src, dest).await.map_err(|e| Error::IOError { err_msg: e.to_string() })}, Message::GridSaved)}
+        else {
+            Task::none()};
         if let Some(old) = state
             .game_entries
             .iter_mut()
@@ -108,7 +114,7 @@ fn confirm_entry(state: &mut State) -> Task<Message> {
         {
             *old = (
                 GameEntry::Local(pending.to_owned().into()),
-                Handle::from_path(&pending.grid_path),
+                load_handle(&pending.grid_path),
             );
         } else {
             let new_entry = (
@@ -117,10 +123,22 @@ fn confirm_entry(state: &mut State) -> Task<Message> {
             );
             state.game_entries.push(new_entry);
         }
+        state.game_form = None;
+        state.overlay = Overlay::None;
+        return grid_task.chain(Task::done(Message::SyncGamesToDisk));
     }
-    state.game_form = None;
-    state.overlay = Overlay::None;
-    Task::done(Message::SyncGamesToDisk)}
+    Task::none()
+}
+pub fn grid_saved(result: Result<u64, Error>) -> Task<Message> {
+    match result {
+        Ok(s) => {
+
+        },
+        Err(e) => {eprintln!("{}", e)}
+    }
+    Task::none()
+}
+
 fn cancel_entry(state: &mut State) -> Task<Message> {
     state.overlay = Overlay::None;
     state.game_form = None;
@@ -330,11 +348,14 @@ pub fn process_loaded_games() -> Vec<(GameEntry, Handle)> {
             GameEntry::Local(g) => g.get_grid(),
             GameEntry::Steam(g) => g.get_grid(),
         };
-        let handle = if !handle_path.exists() {
-            Handle::from_path(app_data_dir().join(format!("grids/{}", PLACEHOLDER_GRID)))
-        } else {
-            Handle::from_path(handle_path)
-        };
+        let handle = load_handle(handle_path);
         game_entries.push((entry, handle));
     }
     game_entries}
+
+fn load_handle(path: &std::path::Path) -> Handle {
+    match std::fs::read(path) {
+        Ok(bytes) => Handle::from_bytes(bytes),
+        Err(_) => Handle::from_path(app_data_dir().join("grids").join(PLACEHOLDER_GRID)),
+    }
+}

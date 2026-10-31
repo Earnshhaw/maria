@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 pub fn app_data_dir() -> PathBuf {
@@ -42,4 +42,8 @@ pub fn persistence_dirs_valid() -> bool {
         return false;
     }
     true
+}
+
+pub fn grid_path(source: &Path, id: String) -> PathBuf {
+   app_data_dir().join("grids").join(id).with_extension(source.extension().unwrap())
 }

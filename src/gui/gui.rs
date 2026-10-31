@@ -3,7 +3,7 @@ use crate::gui::gui_prelude::{
     PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game,
     edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted,
     game_edit_overlay_branch, game_grid_view, game_terminated, launch_game, modal, pane_grid,
-    pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view
+    pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view, grid_saved
 };
 
 #[derive(Debug, Clone)]
@@ -97,6 +97,7 @@ pub enum Message {
     GameEditOverlay(GameEdit),
     DeleteEntry(String),
     EntryDeleted(Result<(), Error>),
+    GridSaved(Result<u64, Error>)
 }
 
 impl State {
@@ -127,6 +128,7 @@ impl State {
             Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
             Message::DeleteEntry(id) => delete_game(self, id),
             Message::EntryDeleted(result) => game_deleted(result),
+            Message::GridSaved(result) => grid_saved(result)
         }
     }
     pub fn new(

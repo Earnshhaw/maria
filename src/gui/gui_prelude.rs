@@ -13,7 +13,7 @@ pub use crate::{
     gui::update::{
         GameEdit, KeyValue, SetMethod, delete_game, fetch_steam_games_cmd, game_deleted,
         game_edit_overlay_branch, game_terminated, launch_game, pane_resized, process_loaded_games,
-        steam_games_fetched, sync_games, synced,
+        steam_games_fetched, sync_games, synced, grid_saved
     },
     gui::view::{game_grid_view, sidebar_view, topbar_view},
     id::ensure_unique_id,
