@@ -1,20 +1,20 @@
-use crate::{data_model::GameEntry, dirs::{app_data_dir}, error::Error, misc::GAME_CFG_ENTRY_NAME};
+use crate::{data_model::{Game, GameEntry, GameId}, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
 use std::{fs::File, path::{Path, PathBuf}};
 use tokio::fs::{create_dir_all, remove_dir_all, remove_file, write};
 
-pub async fn save_to_disk(game_entries: Vec<GameEntry>) -> Result<(), Error> {
+pub async fn save_to_disk(game_entries: Vec<Game>) -> Result<(), Error> {
     for game_entry in game_entries {
         let validated = game_dir_exists(game_entry.get_id())
             .await?
             .join(GAME_CFG_ENTRY_NAME);
-        let formatted = toml::to_string_pretty(&game_entry)?;
+        let formatted = toml::to_string_pretty(&game_entry.get_entry())?;
         write(validated, formatted).await?;
     }
     Ok(())
 }
 
-pub async fn delete_from_disk(game_entry: GameEntry) -> Result<(), Error> {
-    let undesired_entry_dir = app_data_dir().join(game_entry.get_id());
+pub async fn delete_from_disk(game_entry: Game) -> Result<(), Error> {
+    let undesired_entry_dir = app_data_dir().join(game_entry.get_id().to_string());
     let undesired_grid = game_entry.get_grid();
     remove_dir_all(undesired_entry_dir).await?;
     remove_file(undesired_grid).await?;

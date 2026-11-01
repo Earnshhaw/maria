@@ -1,10 +1,10 @@
 use dashmap::DashMap;
 
-use crate::{ dirs::grid_path, disk_sync::save_grid, gui::{gui_prelude::{
+use crate::{ data_model::{Game, GameId}, dirs::grid_path, disk_sync::save_grid, gui::gui_prelude::{
     Error, ExitStatus, GameDraft, GameEntry, Handle, Message, Overlay, PLACEHOLDER_GRID, Runner,
     State, SteamEntry, Task, app_data_dir, default_game_entry, delete_from_disk, fetch_steam_games,
     load_saved_games, pane_grid, run_game, save_to_disk,
-}}};
+}};
 
 #[derive(Debug, Clone)]
 pub enum KeyValue {
@@ -21,7 +21,7 @@ pub enum SetMethod {
 #[derive(Debug, Clone)]
 pub enum GameEdit {
     AddLocalGame,
-    EditLocalGame(GameEntry),
+    EditLocalGame(GameId),
     SetTitle(String),
     SetGridRfd,
     GridSet(Option<rfd::FileHandle>),
@@ -56,7 +56,7 @@ pub fn game_edit_overlay_branch(state: &mut State, cmd: GameEdit) -> Task<Messag
         GameEdit::SetRunner(runner) => set_runner(state, runner),
         GameEdit::SetWorkingDir(method) => set_working_dialogue(state, method),
         GameEdit::AddLocalGame => add_local_game_menu(state),
-        GameEdit::EditLocalGame(game) => edit_local_game(state, game),
+        GameEdit::EditLocalGame(id) => edit_local_game(state, id),
         GameEdit::SetTitle(title) => edit_title(state, title),
         GameEdit::AddEnvField => add_env_field(state),
         GameEdit::RemoveEnvField(i) => remove_env_field(state, i),
@@ -73,54 +73,58 @@ pub fn remove_env_field(state: &mut State, i: usize) -> Task<Message> {
 pub fn edit_title(state: &mut State, title: String) -> Task<Message> {
     state.temp_entry().title = title;
     Task::none()}
-fn edit_local_game(state: &mut State, game: GameEntry) -> Task<Message> {
-    match game {
-        GameEntry::Local(game) => {
-            let game = GameDraft {
-                title: game.get_title().to_owned(),
-                id: *game.get_id(),
-                grid_path: game.get_grid().to_owned(),
-                binary_path: game.get_binary_path().to_string_lossy().into_owned(),
-                working_dir: game.get_working_dir().to_string_lossy().into_owned(),
-                wrappers: game.get_wrappers().join(" "),
-                env_vars: game
-                    .get_env_vars()
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.to_string()))
-                    .collect(),
-                launch_args: game.get_launch_args().join(" "),
-                runner: Some(game.get_runner().to_owned()),
-            };
-            state.game_form = Some(game);
-            state.overlay = Overlay::GameEdit;
-            Task::none()
+fn edit_local_game(state: &mut State, id: GameId) -> Task<Message> {
+    if let Some(game) = state.game_entries.get(&id) {
+        match game.value().get_entry() {
+            GameEntry::Local(game) => {
+                let game = GameDraft {
+                    title: game.get_title().to_owned(),
+                    id: *game.get_id(),
+                    grid_path: game.get_grid().to_owned(),
+                    binary_path: game.get_binary_path().to_string_lossy().into_owned(),
+                    working_dir: game.get_working_dir().to_string_lossy().into_owned(),
+                    wrappers: game.get_wrappers().join(" "),
+                    env_vars: game
+                        .get_env_vars()
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.to_string()))
+                        .collect(),
+                    launch_args: game.get_launch_args().join(" "),
+                    runner: Some(game.get_runner().to_owned()),
+                };
+                state.game_form = Some(game);
+                state.overlay = Overlay::GameEdit;
+
+            },
+            GameEntry::Steam(_) => {}
         }
-        GameEntry::Steam(_) => Task::none(),
-    }}
+    }
+    Task::none()
+}
+
 fn edit_wrappers(state: &mut State, payload: String) -> Task<Message> {
     state.temp_entry().wrappers = payload;
     Task::none()}
 fn confirm_entry(state: &mut State) -> Task<Message> {
-    if let Some(pending) = state.game_form.as_ref() {
-        let dest = grid_path(&pending.grid_path, pending.id.to_string());
-        let src = &pending.grid_path;
-        let grid_task = if dest != *src {
-            let src = src.clone();
-            println!("HERE");
-            Task::perform(async move {tokio::fs::copy(src, dest).await.map_err(|e| Error::IOError { err_msg: e.to_string() })}, Message::GridSaved)}
-        else {
-            Task::none()};
-        let formatted: GameEntry = GameEntry::Local(pending.to_owned().into());
-        let handle = load_handle(&formatted.get_grid());
-        state.game_entries.insert(formatted, handle);
-        state.game_form = None;
-        state.overlay = Overlay::None;
-        return grid_task.chain(Task::done(Message::SyncGamesToDisk));
-
-    }
-    state.game_form = None;
+    let Some(pending) = state.game_form.take() else {return Task::none()};
     state.overlay = Overlay::None;
-    Task::none()
+
+
+    let dest = grid_path(&pending.grid_path, pending.id.to_string());
+    let src = pending.grid_path.clone();
+    let formatted: GameEntry = GameEntry::Local(pending.into());
+
+    let grid_task = if dest != *src {
+        let src = src.clone();
+        println!("HERE");
+        Task::perform(async move {tokio::fs::copy(src, dest).await.map_err(|e| Error::IOError { err_msg: e.to_string() })}, Message::GridSaved)}
+    else {
+            Task::none()};
+
+    let handle = load_handle(&formatted.get_grid());
+    state.game_entries.insert(GameId::new(formatted.get_id()), Game::new(formatted, handle));        state.overlay = Overlay::None;
+    return grid_task.chain(Task::done(Message::SyncGamesToDisk));
+
 }
 pub fn grid_saved(result: Result<u64, Error>) -> Task<Message> {
     match result {
@@ -243,13 +247,15 @@ pub fn game_terminated(state: &mut State, status: Result<ExitStatus, Error>) -> 
         }
     }
     Task::none()}
-pub fn launch_game(state: &mut State, strid: GameEntry) -> Task<Message> {
+pub fn launch_game(state: &mut State, strid: GameId) -> Task<Message> {
     if state.running_game.is_some() {
         return Task::none();
     }
+
     if let Some(game) = state.game_entries.get(&strid) {
-        state.running_game = Some(game.key().clone());
-        let g = game.key().clone();
+        let game_id = game.key().to_string();
+        state.running_game = Some(game_id);
+        let g = game.value().get_entry();
         Task::perform(
             async move {
                 let child_spawn = run_game(&g).await;
@@ -272,10 +278,10 @@ pub fn synced(state: &mut State, status: Result<(), Error>) -> Task<Message> {
 
     //state.game_entries = load_saved_games().unwrap();
     Task::none()}
-pub fn delete_game(state: &mut State, id: GameEntry) -> Task<Message> {
+pub fn delete_game(state: &mut State, id: GameId) -> Task<Message> {
     let undesired_entry = state.game_entries.remove(&id);
-    if let Some((entry, _)) = undesired_entry {
-        Task::perform(async move {delete_from_disk(entry).await}, Message::EntryDeleted)
+    if let Some((_, game)) = undesired_entry {
+        Task::perform(async move {delete_from_disk(game).await}, Message::EntryDeleted)
     } else {
         Task::none()
     }
@@ -290,7 +296,7 @@ pub fn game_deleted(result: Result<(), Error>) -> Task<Message> {
     Task::none()}
 pub fn sync_games(state: &mut State) -> Task<Message> {
     let game_library = state
-        .game_entries.iter().map(|e| {e.key().clone()})
+        .game_entries.iter().map(|e| {e.value().clone()})
         .collect();
     Task::perform(
         async move { save_to_disk(game_library).await },
@@ -311,7 +317,7 @@ pub fn steam_games_fetched(
             for k in entries {
                 let formatted = GameEntry::Steam(k);
                 let handle = load_handle(&formatted.get_grid());
-                state.game_entries.entry(formatted).or_insert(handle);
+                state.game_entries.entry(GameId::new(formatted.get_grid().to_string_lossy())).or_insert(Game::new(formatted, handle));
             }
             Task::done(Message::SyncGamesToDisk)
         }

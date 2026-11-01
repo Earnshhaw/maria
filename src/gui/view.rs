@@ -10,16 +10,16 @@ pub fn game_grid_view(state: &State) -> Element<'_, Message> {
             ContextMenu::new(
                 {
                     button(
-                        image(entry.value()).width(Length::Fill).height(Length::Fill).border_radius(25).filter_method(image::FilterMethod::Linear)
+                        image(entry.value().get_handle()).width(Length::Fill).height(Length::Fill).border_radius(25).filter_method(image::FilterMethod::Linear)
                     .height(900)
                     .height(600))
                     .style(button_card)
                     .padding(0)
-                    .on_press(Message::LaunchGame(entry.key().clone()))
+                    .on_press(Message::LaunchGame(entry.key().to_owned()))
                 },
                 move || {
                     //OVERLAY
-                    let button_m = match entry.key() {
+                    let button_m = match entry.get_entry() {
                         GameEntry::Local(_) => {
                             column![button("Edit").on_press(
                                 Message::GameEditOverlay(GameEdit::EditLocalGame(entry.key().clone()))

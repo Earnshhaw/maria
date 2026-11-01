@@ -1,19 +1,16 @@
 use dashmap::DashMap;
 
-use crate::gui::gui_prelude::{
-    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEdit, GameEntry, Handle, LocalEntry,
-    PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game,
-    edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted,
-    game_edit_overlay_branch, game_grid_view, game_terminated, launch_game, modal, pane_grid,
-    pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view, grid_saved
-};
+use crate::{data_model::{Game, GameId}, gui::gui_prelude::{
+    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEdit, GameEntry, Handle, LocalEntry, PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game, edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted, game_edit_overlay_branch, game_grid_view, game_terminated, grid_saved, launch_game, modal, pane_grid, pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view
+}};
+
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct State {
-    pub game_entries: DashMap<GameEntry, Handle>,
+    pub game_entries: DashMap<GameId, Game>,
     pub runners: Vec<Runner>,
-    pub running_game: Option<GameEntry>,
+    pub running_game: Option<String>,
     pub config: AppConfig,
     pub pane: pane_grid::State<Pane>,
     pub overlay: Overlay,
@@ -93,11 +90,11 @@ pub enum Message {
     SteamGamesFetched(Result<Vec<SteamEntry>, Error>),
     SyncGamesToDisk,
     Synced(Result<(), Error>),
-    LaunchGame(GameEntry),
+    LaunchGame(GameId),
     GameExited(Result<ExitStatus, Error>),
     PaneResized(pane_grid::ResizeEvent),
     GameEditOverlay(GameEdit),
-    DeleteEntry(GameEntry),
+    DeleteEntry(GameId),
     EntryDeleted(Result<(), Error>),
     GridSaved(Result<u64, Error>)
 }
@@ -124,7 +121,7 @@ impl State {
             Message::SteamGamesFetched(result) => steam_games_fetched(self, result),
             Message::SyncGamesToDisk => sync_games(self),
             Message::Synced(status) => synced(self, status),
-            Message::LaunchGame(strid) => launch_game(self, strid),
+            Message::LaunchGame(id) => launch_game(self, id),
             Message::GameExited(status) => game_terminated(self, status),
             Message::PaneResized(resize) => pane_resized(self, resize),
             Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
@@ -134,18 +131,18 @@ impl State {
         }
     }
     pub fn new(
-        game_entries: DashMap<GameEntry, Handle>,
+        game_entries: DashMap<GameId, Game>,
         runners: Vec<Runner>,
         config: AppConfig,
     ) -> Self {
-        let g_entries = game_entries.into_iter().fold(DashMap::new(), |acc, (k, v)| {acc.insert(k, v); acc});
+
         let (mut panes, first) = pane_grid::State::new(Pane::SidebarView);
         let (_, split) = panes
             .split(pane_grid::Axis::Vertical, first, Pane::GameGrids)
             .unwrap();
         panes.resize(split, 0.20);
         State {
-            game_entries: g_entries,
+            game_entries: game_entries,
             runners,
             running_game: None,
             config,

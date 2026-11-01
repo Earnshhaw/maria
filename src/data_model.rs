@@ -1,9 +1,9 @@
 #![allow(unused)]
 use crate::gather_runners::RunnerEntry;
+use iced::widget::image::Handle;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
+    collections::BTreeMap, ops::Deref, path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -11,6 +11,57 @@ use uuid::Uuid;
 pub enum GameEntry {
     Steam(SteamEntry),
     Local(LocalEntry),
+}
+
+#[derive(Debug, Clone)]
+pub struct Game {
+    entry: GameEntry,
+    handle: Handle
+}
+
+impl Game {
+    pub fn new(entry: GameEntry, handle: Handle) -> Game {
+        Game {
+            entry,
+            handle
+        }
+    }
+    pub fn get_id(&self) -> GameId {
+        match &self.entry {
+            GameEntry::Local(g) => {GameId(g.get_id().to_string())},
+            GameEntry::Steam(g) => {GameId(g.get_appid().to_string())}
+        }
+    }
+    pub fn get_grid(&self) -> PathBuf {
+        match &self.entry {
+            GameEntry::Local(g) => {g.get_grid().to_owned()},
+            GameEntry::Steam(g) => {g.get_grid().to_owned()}
+        }
+    }
+    pub fn get_entry(&self) -> GameEntry {
+        match &self.entry {
+            GameEntry::Local(g) => GameEntry::Local(g.to_owned()),
+            GameEntry::Steam(g) => GameEntry::Steam(g.to_owned())
+        }
+    }
+    pub fn get_handle(&self) -> &Handle {
+        &self.handle
+    }
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct GameId(String);
+
+impl std::fmt::Display for GameId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl GameId {
+    pub fn new(id: impl ToString) -> GameId {
+        GameId(id.to_string())
+    }
 }
 
 impl GameEntry {

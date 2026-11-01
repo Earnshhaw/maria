@@ -1,5 +1,5 @@
 use crate::{
-    api_keys::steamgriddb_api_key, data_model::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}, error::Error, misc::{GAME_CFG_ENTRY_NAME, PLACEHOLDER_GRID},
+    api_keys::steamgriddb_api_key, data_model::{Game, GameEntry, GameId, SteamEntry}, dirs::{app_data_dir, steam_dir}, error::Error, misc::{GAME_CFG_ENTRY_NAME, PLACEHOLDER_GRID},
 };
 use dashmap::DashMap;
 use iced::widget::image::Handle;
@@ -17,7 +17,7 @@ use steamgriddb_api::{
 };
 use tokio::{fs::File, io::AsyncWriteExt};
 
-pub fn load_saved_games() -> Result<DashMap<GameEntry, Handle>, Error> {
+pub fn load_saved_games() -> Result<DashMap<GameId, Game>, Error> {
     let app_data_dir = app_data_dir();
 
     if !app_data_dir.try_exists()? {
@@ -35,13 +35,12 @@ pub fn load_saved_games() -> Result<DashMap<GameEntry, Handle>, Error> {
         })
         .collect();
 
-
-    let game_entries: DashMap<GameEntry, Handle> = game_folders.into_par_iter().filter_map(|e| {
+    let game_entries: DashMap<GameId, Game> = game_folders.into_par_iter().filter_map(|e| {
         let entry_file = read_dir(e).ok()?.filter_map(|files| {files.ok()}).find(|file| file.file_name().to_string_lossy() == GAME_CFG_ENTRY_NAME)?;
         let contents = read_to_string(entry_file.path()).ok()?;
         let game_entry: GameEntry = toml::from_str(&contents).ok()?;
         let handle = load_handle(&game_entry.get_grid());
-        Some(vec![(game_entry, handle)])
+        Some(vec![(GameId::new(game_entry.get_id()) ,Game::new(game_entry, handle))])
     }).flatten().collect();
 
 
