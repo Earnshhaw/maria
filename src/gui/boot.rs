@@ -1,7 +1,7 @@
-use crate::gui::gui_prelude::{
-    ProtonVariant, Runner, State, fetch_runners, persistence_dirs_valid, process_loaded_games,
+use crate::{gather_games::load_saved_games, gui::gui_prelude::{
+    ProtonVariant, Runner, State, fetch_runners, persistence_dirs_valid,
     read_config,
-};
+}};
 
 pub fn boot() -> State {
     if !persistence_dirs_valid() {
@@ -9,7 +9,7 @@ pub fn boot() -> State {
     }
     let config = read_config().unwrap_or_default();
 
-    let game_entries = process_loaded_games();
+    let game_entries = load_saved_games().unwrap();
     let mut runners: Vec<Runner> = fetch_runners()
         .unwrap_or_default()
         .into_iter()

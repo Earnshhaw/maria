@@ -7,7 +7,7 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, PartialEq, Eq, Hash)]
 pub enum GameEntry {
     Steam(SteamEntry),
     Local(LocalEntry),
@@ -40,14 +40,14 @@ impl Default for GameEntry {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct SteamEntry {
     appid: u64,
     title: String,
     grid_path: PathBuf,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct LocalEntry {
     title: String,
     id: Uuid,
@@ -137,7 +137,7 @@ impl SteamEntry {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub enum Runner {
     #[default]
     Native,
@@ -155,7 +155,7 @@ impl ToString for Runner {
     }
 }
 
-#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub enum ProtonVariant {
     GEProton, //latest ge proton
     #[default]

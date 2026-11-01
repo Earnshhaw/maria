@@ -1,10 +1,9 @@
 use crate::{
-    api_keys::steamgriddb_api_key,
-    data_model::{GameEntry, SteamEntry},
-    dirs::{app_data_dir, steam_dir},
-    error::Error,
-    misc::GAME_CFG_ENTRY_NAME,
+    api_keys::steamgriddb_api_key, data_model::{GameEntry, SteamEntry}, dirs::{app_data_dir, steam_dir}, error::Error, misc::{GAME_CFG_ENTRY_NAME, PLACEHOLDER_GRID},
 };
+use dashmap::DashMap;
+use iced::widget::image::Handle;
+use rayon::prelude::*;
 use acf_parser::parser::parse_acf;
 use reqwest::Client;
 use std::{
@@ -18,14 +17,14 @@ use steamgriddb_api::{
 };
 use tokio::{fs::File, io::AsyncWriteExt};
 
-pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
+pub fn load_saved_games() -> Result<DashMap<GameEntry, Handle>, Error> {
     let app_data_dir = app_data_dir();
 
     if !app_data_dir.try_exists()? {
         create_dir_all(&app_data_dir)?;
     }
 
-    let game_folders: Vec<PathBuf> = read_dir(&app_data_dir)?
+    let game_folders: Vec<PathBuf> = read_dir(&app_data_dir)?.par_bridge()
         .filter_map(Result::ok)
         .filter_map(|e| {
             if e.path().is_dir() {
@@ -36,20 +35,26 @@ pub fn load_saved_games() -> Result<Vec<GameEntry>, Error> {
         })
         .collect();
 
-    let mut game_entries = Vec::new();
-    for game_folder_path in game_folders {
-        let entry_file = read_dir(game_folder_path)?
-            .filter_map(Result::ok)
-            .find(|e| e.file_name().to_string_lossy() == GAME_CFG_ENTRY_NAME);
-        if let Some(entry) = entry_file {
-            let unserd_contents = read_to_string(entry.path())?;
-            let entry: GameEntry = toml::from_str(&unserd_contents)?;
-            game_entries.push(entry);
-        }
-    }
+
+    let game_entries: DashMap<GameEntry, Handle> = game_folders.into_par_iter().filter_map(|e| {
+        let entry_file = read_dir(e).ok()?.filter_map(|files| {files.ok()}).find(|file| file.file_name().to_string_lossy() == GAME_CFG_ENTRY_NAME)?;
+        let contents = read_to_string(entry_file.path()).ok()?;
+        let game_entry: GameEntry = toml::from_str(&contents).ok()?;
+        let handle = load_handle(&game_entry.get_grid());
+        Some(vec![(game_entry, handle)])
+    }).flatten().collect();
+
 
     Ok(game_entries)
 }
+
+pub fn load_handle(path: &std::path::Path) -> Handle {
+    match std::fs::read(path) {
+        Ok(bytes) => Handle::from_bytes(bytes),
+        Err(_) => Handle::from_path(app_data_dir().join("grids").join(PLACEHOLDER_GRID)),
+    }
+}
+
 
 fn manifests_dir(steam_dir: &PathBuf) -> PathBuf {
     steam_dir.join("steamapps")

@@ -83,7 +83,7 @@ fn dedup_runners(runners: Vec<RunnerEntry>) -> Vec<RunnerEntry> {
     unique_runners
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Deserialize, Serialize, Eq, Ord, Hash)]
 pub struct RunnerEntry {
     name: String,
     path: PathBuf,

@@ -1,3 +1,5 @@
+use dashmap::DashMap;
+
 use crate::gui::gui_prelude::{
     AppConfig, BTreeMap, Element, Error, ExitStatus, GameEdit, GameEntry, Handle, LocalEntry,
     PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game,
@@ -9,7 +11,7 @@ use crate::gui::gui_prelude::{
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct State {
-    pub game_entries: Vec<(GameEntry, Handle)>,
+    pub game_entries: DashMap<GameEntry, Handle>,
     pub runners: Vec<Runner>,
     pub running_game: Option<GameEntry>,
     pub config: AppConfig,
@@ -91,11 +93,11 @@ pub enum Message {
     SteamGamesFetched(Result<Vec<SteamEntry>, Error>),
     SyncGamesToDisk,
     Synced(Result<(), Error>),
-    LaunchGame(String),
+    LaunchGame(GameEntry),
     GameExited(Result<ExitStatus, Error>),
     PaneResized(pane_grid::ResizeEvent),
     GameEditOverlay(GameEdit),
-    DeleteEntry(String),
+    DeleteEntry(GameEntry),
     EntryDeleted(Result<(), Error>),
     GridSaved(Result<u64, Error>)
 }
@@ -132,17 +134,18 @@ impl State {
         }
     }
     pub fn new(
-        game_entries: Vec<(GameEntry, Handle)>,
+        game_entries: DashMap<GameEntry, Handle>,
         runners: Vec<Runner>,
         config: AppConfig,
     ) -> Self {
+        let g_entries = game_entries.into_iter().fold(DashMap::new(), |acc, (k, v)| {acc.insert(k, v); acc});
         let (mut panes, first) = pane_grid::State::new(Pane::SidebarView);
         let (_, split) = panes
             .split(pane_grid::Axis::Vertical, first, Pane::GameGrids)
             .unwrap();
         panes.resize(split, 0.20);
         State {
-            game_entries,
+            game_entries: g_entries,
             runners,
             running_game: None,
             config,
@@ -153,14 +156,5 @@ impl State {
     }
     pub fn temp_entry(&mut self) -> &mut GameDraft {
         self.game_form.as_mut().unwrap()
-    }
-    pub fn get_game_by_id(&self, strid: String) -> Option<GameEntry> {
-        self.game_entries
-            .iter()
-            .find(|(entry, _)| entry.get_id() == strid)
-            .map(|(entry, _)| entry.clone())
-    }
-    pub fn game_entries(&self) -> &Vec<(GameEntry, Handle)> {
-        &self.game_entries
     }
 }
