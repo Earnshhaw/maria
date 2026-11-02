@@ -24,9 +24,9 @@ fn make_prefix(game: &GameEntry) {
 
 pub async fn run_game(game: &GameEntry) -> Result<Child, Error> {
     make_prefix(game);
-    command_build(game)
-        .spawn()
-        .map_err(|e| Error::IOError { err_msg: e.to_string() })
+    command_build(game).spawn().map_err(|e| Error::IOError {
+        err_msg: e.to_string(),
+    })
 }
 
 fn command_build(entry: &GameEntry) -> Command {
@@ -81,7 +81,7 @@ fn command_build(entry: &GameEntry) -> Command {
                     };
                     initial
                         .envs([
-                            ("PROTONPATH", variant.get_string()),
+                            ("PROTONPATH", variant.as_string()),
                             ("WINEPREFIX", prefix_dir(game.get_id())),
                         ])
                         .arg(game.get_binary_path());

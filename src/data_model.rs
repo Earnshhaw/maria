@@ -1,9 +1,11 @@
 #![allow(unused)]
 use crate::gather_runners::RunnerEntry;
 use iced::widget::image::Handle;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::IntoDeserializer};
 use std::{
-    collections::BTreeMap, ops::Deref, path::{Path, PathBuf},
+    collections::BTreeMap,
+    ops::Deref,
+    path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -16,32 +18,29 @@ pub enum GameEntry {
 #[derive(Debug, Clone)]
 pub struct Game {
     entry: GameEntry,
-    handle: Handle
+    handle: Handle,
 }
 
 impl Game {
     pub fn new(entry: GameEntry, handle: Handle) -> Game {
-        Game {
-            entry,
-            handle
-        }
+        Game { entry, handle }
     }
     pub fn get_id(&self) -> GameId {
         match &self.entry {
-            GameEntry::Local(g) => {GameId(g.get_id().to_string())},
-            GameEntry::Steam(g) => {GameId(g.get_appid().to_string())}
+            GameEntry::Local(g) => GameId(g.get_id().to_string()),
+            GameEntry::Steam(g) => GameId(g.get_appid().to_string()),
         }
     }
     pub fn get_grid(&self) -> PathBuf {
         match &self.entry {
-            GameEntry::Local(g) => {g.get_grid().to_owned()},
-            GameEntry::Steam(g) => {g.get_grid().to_owned()}
+            GameEntry::Local(g) => g.get_grid().to_owned(),
+            GameEntry::Steam(g) => g.get_grid().to_owned(),
         }
     }
     pub fn get_entry(&self) -> GameEntry {
         match &self.entry {
             GameEntry::Local(g) => GameEntry::Local(g.to_owned()),
-            GameEntry::Steam(g) => GameEntry::Steam(g.to_owned())
+            GameEntry::Steam(g) => GameEntry::Steam(g.to_owned()),
         }
     }
     pub fn get_handle(&self) -> &Handle {
@@ -58,9 +57,15 @@ impl std::fmt::Display for GameId {
     }
 }
 
-impl GameId {
-    pub fn new(id: impl ToString) -> GameId {
-        GameId(id.to_string())
+impl From<Uuid> for GameId {
+    fn from(value: Uuid) -> Self {
+        GameId(value.to_string())
+    }
+}
+
+impl From<u64> for GameId {
+    fn from(value: u64) -> Self {
+        GameId(value.to_string())
     }
 }
 
@@ -71,10 +76,10 @@ impl GameEntry {
             GameEntry::Steam(f) => f.get_title().to_owned(),
         }
     }
-    pub fn get_id(&self) -> String {
+    pub fn get_id(&self) -> GameId {
         match &self {
-            GameEntry::Local(s) => s.get_id().to_string(),
-            GameEntry::Steam(s) => s.get_appid().to_string(),
+            GameEntry::Local(s) => s.get_id().to_owned().into(),
+            GameEntry::Steam(s) => s.get_appid().into(),
         }
     }
     pub fn get_grid(&self) -> PathBuf {
@@ -196,14 +201,15 @@ pub enum Runner {
     Proton(ProtonVariant),
 }
 
-impl ToString for Runner {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Runner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Native => String::from("Native"),
-            Self::Wine => String::from("Wine"),
-            Self::Proton(pr_vr) => pr_vr.to_string(),
+            Runner::Native => {f.write_str("Native")},
+            Runner::Proton(variant) => {f.write_str(&variant.to_string())},
+            Runner::Wine => {f.write_str("Wine")}
         }
     }
+
 }
 
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq, Ord, Hash)]
@@ -214,18 +220,18 @@ pub enum ProtonVariant {
     Custom(RunnerEntry), //path to a local proton folder, must have proton file inside of it
 }
 
-impl ToString for ProtonVariant {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for ProtonVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::GEProton => String::from("GEProton"),
-            Self::UMUProton => String::from("UMUProton"),
-            Self::Custom(r_e) => String::from(r_e.name()),
+            Self::GEProton => {f.write_str("GEProton")},
+            Self::UMUProton => {f.write_str("UMUProton")},
+            Self::Custom(r_e) => {f.write_str(r_e.name())},
         }
     }
 }
 
 impl ProtonVariant {
-    pub fn get_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         match self {
             Self::GEProton => String::from("GE-Proton"),
             Self::UMUProton => String::from("UMU-Proton"),

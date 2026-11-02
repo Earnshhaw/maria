@@ -1,9 +1,16 @@
+use crate::{
+    data_model::{Game, GameId},
+    gui::{
+        AppConfig, Error, GameEdit, LocalEntry, PLACEHOLDER_GRID, Runner, SteamEntry, app_data_dir,
+        delete_game, edit_game_modal, fetch_steam_games_cmd, game_deleted,
+        game_edit_overlay_branch, game_grid_view, game_terminated, grid_saved, launch_game, modal,
+        pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view,
+    },
+    id::ensure_unique_id,
+};
 use dashmap::DashMap;
-
-use crate::{data_model::{Game, GameId}, gui::gui_prelude::{
-    AppConfig, BTreeMap, Element, Error, ExitStatus, GameEdit, GameEntry, Handle, LocalEntry, PLACEHOLDER_GRID, PathBuf, Runner, SteamEntry, Task, app_data_dir, delete_game, edit_game_modal, ensure_unique_id, fetch_steam_games_cmd, game_deleted, game_edit_overlay_branch, game_grid_view, game_terminated, grid_saved, launch_game, modal, pane_grid, pane_resized, sidebar_view, steam_games_fetched, sync_games, synced, topbar_view
-}};
-
+use iced::{Element, Task, widget::pane_grid};
+use std::{collections::BTreeMap, path::PathBuf, process::ExitStatus};
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
@@ -42,7 +49,10 @@ impl From<GameDraft> for LocalEntry {
         LocalEntry::new(
             value.title,
             value.id,
-            app_data_dir().join("grids").join(value.id.to_string()).with_extension(value.grid_path.extension().unwrap()),
+            app_data_dir()
+                .join("grids")
+                .join(value.id.to_string())
+                .with_extension(value.grid_path.extension().unwrap()),
             PathBuf::from(value.binary_path),
             PathBuf::from(value.working_dir),
             value
@@ -96,7 +106,7 @@ pub enum Message {
     GameEditOverlay(GameEdit),
     DeleteEntry(GameId),
     EntryDeleted(Result<(), Error>),
-    GridSaved(Result<u64, Error>)
+    GridSaved(Result<u64, Error>),
 }
 
 impl State {
@@ -127,7 +137,7 @@ impl State {
             Message::GameEditOverlay(cmd) => game_edit_overlay_branch(self, cmd),
             Message::DeleteEntry(id) => delete_game(self, id),
             Message::EntryDeleted(result) => game_deleted(result),
-            Message::GridSaved(result) => grid_saved(result)
+            Message::GridSaved(result) => grid_saved(result),
         }
     }
     pub fn new(
@@ -135,7 +145,6 @@ impl State {
         runners: Vec<Runner>,
         config: AppConfig,
     ) -> Self {
-
         let (mut panes, first) = pane_grid::State::new(Pane::SidebarView);
         let (_, split) = panes
             .split(pane_grid::Axis::Vertical, first, Pane::GameGrids)

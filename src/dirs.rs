@@ -45,5 +45,8 @@ pub fn persistence_dirs_valid() -> bool {
 }
 
 pub fn grid_path(source: &Path, id: String) -> PathBuf {
-   app_data_dir().join("grids").join(id).with_extension(source.extension().unwrap())
+    app_data_dir()
+        .join("grids")
+        .join(id)
+        .with_extension(source.extension().unwrap())
 }

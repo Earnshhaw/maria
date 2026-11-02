@@ -1,18 +1,25 @@
-use crate::gui::gui_prelude::{
-    ContextMenu, Element, GameEdit, GameEntry, Item, Length, Menu, Message, State, button,
-    container, grid, scrollable, text, button_card, row, Space, image, column
-};
+use iced::{Element, Length, widget::{Space, button, column, container, grid, image, row, scrollable, text}};
+use iced_aw::{ContextMenu, Menu, menu::Item};
+
+use crate::gui::{GameEdit, GameEntry, Message, State, button_card};
+
+
 
 const PANESPLIT: f32 = 2 as f32 / 3 as f32;
 pub fn game_grid_view(state: &State) -> Element<'_, Message> {
     let grid = scrollable(
-        grid(state.game_entries.iter().map(|(entry)| {
+        grid(state.game_entries.iter().map(|entry| {
             ContextMenu::new(
                 {
                     button(
-                        image(entry.value().get_handle()).width(Length::Fill).height(Length::Fill).border_radius(25).filter_method(image::FilterMethod::Linear)
-                    .height(900)
-                    .height(600))
+                        image(entry.value().get_handle())
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .border_radius(25)
+                            .filter_method(image::FilterMethod::Linear)
+                            .height(900)
+                            .height(600),
+                    )
                     .style(button_card)
                     .padding(0)
                     .on_press(Message::LaunchGame(entry.key().to_owned()))
@@ -21,9 +28,9 @@ pub fn game_grid_view(state: &State) -> Element<'_, Message> {
                     //OVERLAY
                     let button_m = match entry.get_entry() {
                         GameEntry::Local(_) => {
-                            column![button("Edit").on_press(
-                                Message::GameEditOverlay(GameEdit::EditLocalGame(entry.key().clone()))
-                            )]
+                            column![button("Edit").on_press(Message::GameEditOverlay(
+                                GameEdit::EditLocalGame(entry.key().clone())
+                            ))]
                         }
                         GameEntry::Steam(_) => {
                             column![]
@@ -31,7 +38,9 @@ pub fn game_grid_view(state: &State) -> Element<'_, Message> {
                     };
                     let cx = button_m
                         .push(button("Run").on_press(Message::LaunchGame(entry.key().to_owned())))
-                        .push(button("Delete").on_press(Message::DeleteEntry(entry.key().to_owned())));
+                        .push(
+                            button("Delete").on_press(Message::DeleteEntry(entry.key().to_owned())),
+                        );
                     cx.into()
                 }, //OVERLAY
             )
@@ -64,5 +73,8 @@ pub fn topbar_view(state: &State) -> Element<'_, Message> {
         text("Add a game"),
         Menu::new(options).width(Length::Fixed(125.0))
     ));
-    container(row![Space::new().width(Length::Fill), cx]).padding(10).width(Length::Fill).into()
+    container(row![Space::new().width(Length::Fill), cx])
+        .padding(10)
+        .width(Length::Fill)
+        .into()
 }

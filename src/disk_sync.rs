@@ -1,5 +1,5 @@
-use crate::{data_model::{Game, GameEntry, GameId}, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
-use std::{fs::File, path::{Path, PathBuf}};
+use crate::{data_model::Game, dirs::app_data_dir, error::Error, misc::GAME_CFG_ENTRY_NAME};
+use std::path::{PathBuf};
 use tokio::fs::{create_dir_all, remove_dir_all, remove_file, write};
 
 pub async fn save_to_disk(game_entries: Vec<Game>) -> Result<(), Error> {
@@ -21,15 +21,10 @@ pub async fn delete_from_disk(game_entry: Game) -> Result<(), Error> {
     Ok(())
 }
 
-async fn game_dir_exists(uuid: impl ToString) -> Result<PathBuf, Error> {
+async fn game_dir_exists(uuid: impl std::fmt::Display) -> Result<PathBuf, Error> {
     let game_dir = app_data_dir().join(&uuid.to_string());
     if !game_dir.try_exists()? {
         create_dir_all(&game_dir).await?;
     }
     Ok(game_dir)
-}
-
-pub fn save_grid(from: &Path, to: &Path) -> Result<(), Error> {
-    std::fs::copy(from, to)?;
-    Ok(())
 }

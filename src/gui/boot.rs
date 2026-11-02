@@ -1,7 +1,7 @@
-use crate::{gather_games::load_saved_games, gui::gui_prelude::{
-    ProtonVariant, Runner, State, fetch_runners, persistence_dirs_valid,
+use crate::gui::{
+    ProtonVariant, Runner, fetch_runners, gui::State, load_saved_games, persistence_dirs_valid,
     read_config,
-}};
+};
 
 pub fn boot() -> State {
     if !persistence_dirs_valid() {

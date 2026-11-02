@@ -1,9 +1,6 @@
-use iced::{Length, alignment};
+use iced::{Element, Length, alignment, widget::{button, container, image, opaque, pick_list, row, stack, text_input}};
 
-use crate::gui::gui_prelude::{
-    Element, GameEdit, KeyValue, Message, SetMethod, State, button, container, opaque, pick_list,
-    row, stack, text_input, image
-};
+use crate::gui::{GameEdit, KeyValue, Message, SetMethod, State};
 
 pub fn modal<'a>(
     base: impl Into<Element<'a, Message>>,
@@ -15,8 +12,7 @@ pub fn modal<'a>(
 pub fn edit_game_modal(state: &State) -> Element<'_, Message> {
     let entry = state.game_form.as_ref().unwrap();
     let title = text_input("Title", &entry.title).on_input(|i| GameEdit::SetTitle(i).into());
-    let poster = button(image(&entry.grid_path))
-        .on_press(GameEdit::SetGridRfd.into());
+    let poster = button(image(&entry.grid_path)).on_press(GameEdit::SetGridRfd.into());
     let binary_path = row![
         text_input("Path to executable", &entry.binary_path)
             .on_input(|i| GameEdit::SetBinary(SetMethod::TextInput(i)).into()),
@@ -62,16 +58,21 @@ pub fn edit_game_modal(state: &State) -> Element<'_, Message> {
         button("Confirm").on_press(GameEdit::ConfirmEntry.into()),
         button("Cancel").on_press(GameEdit::CancelEntry.into())
     ];
-    container(iced::widget::column![
-        poster.padding(2).height(300).width(200),
-        title.width(400),
-        binary_path.width(400),
-        working_dir.width(400),
-        runner.width(400),
-        launch_args.width(400),
-        wrappers.width(400),
-        new_envs.width(400),
-        finalization.width(400)
-    ].spacing(5).align_x(alignment::Alignment::Center)).center(Length::Fill)
+    container(
+        iced::widget::column![
+            poster.padding(2).height(300).width(200),
+            title.width(400),
+            binary_path.width(400),
+            working_dir.width(400),
+            runner.width(400),
+            launch_args.width(400),
+            wrappers.width(400),
+            new_envs.width(400),
+            finalization.width(400)
+        ]
+        .spacing(5)
+        .align_x(alignment::Alignment::Center),
+    )
+    .center(Length::Fill)
     .into()
 }

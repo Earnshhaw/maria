@@ -1,5 +1,5 @@
 use iced::border::Radius;
-use iced::widget::{button};
+use iced::widget::button;
 use iced::{Border, Color};
 
 pub fn button_card(_theme: &iced::Theme, _status: button::Status) -> button::Style {
@@ -8,7 +8,7 @@ pub fn button_card(_theme: &iced::Theme, _status: button::Status) -> button::Sty
         border: Border {
             width: 1.0,
             color: Color::TRANSPARENT,
-            radius: Radius::new(20)
+            radius: Radius::new(20),
         },
         ..Default::default()
     }
